@@ -39,10 +39,17 @@ struct OverlayView: View {
         let radius = 18 + 6 * (fs - 1)
         let showHeader = OverlayMetrics.headerVisible(height: size.height, fs: fs)
         let footerOn = !clickThrough && OverlayMetrics.controlsFit(height: size.height, width: size.width, fs: fs)
-        let controlsVisible = footerOn && (hovered || appearance.alwaysShowControls)
+        // Idle is lyrics-only: header and controls fade in together on hover
+        // (or stay on with Always Show Controls). Space stays reserved — the
+        // switch is pure opacity, and the invisible header still drags.
+        let chromeVisible = hovered || appearance.alwaysShowControls
+        let controlsVisible = footerOn && chromeVisible
 
         return VStack(spacing: 5 * fs) {
-            if showHeader { headerView(fs: fs, cardWidth: size.width) }
+            if showHeader {
+                headerView(fs: fs, cardWidth: size.width)
+                    .opacity(chromeVisible ? 1 : 0)
+            }
 
             stageArea(fs: fs)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
