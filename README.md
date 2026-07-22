@@ -49,6 +49,21 @@ control the **Music** app — grant it, otherwise track detection returns nothin
   app behind it (it dims slightly to show it's passive). Toggle it back from
   the menu-bar icon.
 
+## Check it works
+
+Before (or instead of) launching the overlay, run the doctor to test each
+piece of the pipeline independently and see exactly what's healthy:
+
+```bash
+npm run doctor
+```
+
+It checks, in order: you're on macOS with `osascript`; the Music app's current
+track can be read; and LRCLIB returns synced lyrics for it (falling back to a
+known song if nothing's playing). Each line reports `PASS` / `WARN` / `FAIL`
+with a fix hint — so a denied Automation permission or a song LRCLIB doesn't
+have shows up as a specific message instead of a blank overlay.
+
 ## Build an installable app
 
 Package a universal (`arm64` + `x64`) macOS `.dmg` with electron-builder:
