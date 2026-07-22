@@ -72,8 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The live floor (spec Part 3): recompute whenever text size or the
         // track's lyrics change, and after an edge drag ends (deferred growth).
+        // Debounced: the slider fires continuously and each floor recompute
+        // measures every line of the track — visuals stay live regardless,
+        // only the min-size math waits for the drag to settle.
         fontScaleCancellable = appearance.$fontScale
-            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
         linesCancellable = controller.$allLines
             .receive(on: RunLoop.main)

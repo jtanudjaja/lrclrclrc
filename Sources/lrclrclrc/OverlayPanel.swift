@@ -53,8 +53,18 @@ final class OverlayPanel: NSPanel {
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
+    // Move/resize notifications fire per frame during a drag; writing
+    // UserDefaults at that rate is churn — debounce to the drag's end.
+    private var persistWork: DispatchWorkItem?
+
     @objc private func persistFrame() {
-        Settings.overlayFrame = frame
+        persistWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            Settings.overlayFrame = self.frame
+        }
+        persistWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     @objc private func screensChanged() {

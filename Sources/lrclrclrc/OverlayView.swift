@@ -1,6 +1,24 @@
 import SwiftUI
 import AppKit
 
+/// Memoizes wrapped text heights. The stage re-lays-out on every render, and a
+/// scrub re-renders per mouse move (60–120Hz) — measuring ~a dozen lines with
+/// NSAttributedString each frame would burn CPU. Keyed by text+font+width;
+/// cleared wholesale if it ever grows past a few tracks' worth.
+private final class TextHeightCache {
+    private var store: [String: CGFloat] = [:]
+
+    func height(_ text: String, fontSize: CGFloat, width: CGFloat,
+                compute: () -> CGFloat) -> CGFloat {
+        let key = "\(fontSize)|\(Int(width))|\(text)"
+        if let cached = store[key] { return cached }
+        if store.count > 800 { store.removeAll() }
+        let value = compute()
+        store[key] = value
+        return value
+    }
+}
+
 /// The lyric card, per the layout spec:
 ///
 /// Three zones — header (measured, never truncated), stage (flexible), footer
@@ -19,6 +37,7 @@ struct OverlayView: View {
     @State private var scrubbing = false
     @State private var scrubTranslation: CGFloat = 0
     @State private var scrubAnchor = 0
+    @State private var heights = TextHeightCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var motion: Animation? {
@@ -312,7 +331,11 @@ struct OverlayView: View {
         let gap = (6 + min(2.5, max(0, stage.height / fs - 260) * 0.02)) * fs
         let heroFont = OverlayMetrics.heroFont(fs: fs)
         let lineFont = OverlayMetrics.lineFont(fs: fs)
-        let heroH = OverlayMetrics.textHeight(lines[f].text, font: heroFont, width: measureW)
+        let heroSize = 22 * fs
+        let lineSize = 15 * fs
+        let heroH = heights.height(lines[f].text, fontSize: heroSize, width: measureW) {
+            OverlayMetrics.textHeight(lines[f].text, font: heroFont, width: measureW)
+        }
         let budget = max(0, (stage.height - heroH) / 2)
 
         var slots = [Slot(id: f, y: 0, isCredit: false)]
@@ -322,7 +345,10 @@ struct OverlayView: View {
         var used: CGFloat = 0
         var i = f - 1
         while i >= 0 {
-            let h = OverlayMetrics.textHeight(lines[i].text, font: lineFont, width: measureW)
+            let text = lines[i].text
+            let h = heights.height(text, fontSize: lineSize, width: measureW) {
+                OverlayMetrics.textHeight(text, font: lineFont, width: measureW)
+            }
             slots.append(Slot(id: i, y: edge - gap - h / 2, isCredit: false))
             edge -= gap + h
             used += gap + h
@@ -337,9 +363,15 @@ struct OverlayView: View {
         while i <= lines.count {
             let isCredit = i == lines.count
             if isCredit && controller.status.isEmpty { break }
-            let h = isCredit
-                ? 14 * fs
-                : OverlayMetrics.textHeight(lines[i].text, font: lineFont, width: measureW)
+            let h: CGFloat
+            if isCredit {
+                h = 14 * fs
+            } else {
+                let text = lines[i].text
+                h = heights.height(text, fontSize: lineSize, width: measureW) {
+                    OverlayMetrics.textHeight(text, font: lineFont, width: measureW)
+                }
+            }
             slots.append(Slot(id: i, y: edge + gap + h / 2, isCredit: isCredit))
             edge += gap + h
             used += gap + h

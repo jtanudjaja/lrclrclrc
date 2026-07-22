@@ -35,8 +35,12 @@ final class LyricsController: ObservableObject {
     /// True after ~30s with nothing playing — the overlay fades to near-transparent.
     @Published private(set) var longIdle = false
 
-    private let music: PlayerSource = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1)
-    private let spotify: PlayerSource = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001)
+    // All AppleScript work (polls *and* playback commands) is confined to the
+    // one serial pollQueue — NSAppleScript is not thread-safe, and a transport
+    // press racing a background poll was a real crash/hang risk.
+    private let pollQueue: DispatchQueue
+    private let music: PlayerSource
+    private let spotify: PlayerSource
     private var active: PlayerSource
     private var sourceKind = PlayerSourceKind(rawValue: Settings.source) ?? .auto
 
@@ -63,18 +67,37 @@ final class LyricsController: ObservableObject {
     private var playing = false
     private var trackDuration = 0.0
     private var lastPlayingAt = Date()
+    // After a seek, the player reports its old position for a beat; trusting it
+    // would snap the lyrics back before jumping forward again (scrub bounce).
+    private var seekGraceUntil = Date.distantPast
 
-    private let pollQueue = DispatchQueue(label: "net.lrclrclrc.poll")
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var lyricsTask: Task<Void, Never>?
+    private var observerTokens: [NSObjectProtocol] = []
+    private var wakeToken: NSObjectProtocol?
     private var pollInFlight = false        // coalesce: skip if a read is running
     private var isActive = false            // last poll found a playing/paused track
     private var idleTickCounter = 0         // throttle polling while idle
     private var retryAttempt = 0            // fetch backoff: 5s, 10s, 20s, 40s, 60s cap
     private var notOkStreak = 0             // consecutive stopped/notRunning polls
 
-    init() { active = music }
+    init() {
+        let queue = DispatchQueue(label: "net.lrclrclrc.poll")
+        pollQueue = queue
+        music = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1, queue: queue)
+        spotify = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001, queue: queue)
+        active = music
+    }
+
+    deinit {
+        pollTimer?.invalidate()
+        tickTimer?.invalidate()
+        lyricsTask?.cancel()
+        let center = DistributedNotificationCenter.default()
+        for token in observerTokens { center.removeObserver(token) }
+        if let wakeToken { NSWorkspace.shared.notificationCenter.removeObserver(wakeToken) }
+    }
 
     func start() {
         poll()
@@ -108,12 +131,13 @@ final class LyricsController: ObservableObject {
     private func observePlayerNotifications() {
         let center = DistributedNotificationCenter.default()
         for name in ["com.apple.Music.playerInfo", "com.spotify.client.PlaybackStateChanged"] {
-            center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
+            let token = center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 self?.poll()
             }
+            observerTokens.append(token)
         }
         // Re-anchor immediately when the Mac wakes from sleep.
-        NSWorkspace.shared.notificationCenter.addObserver(
+        wakeToken = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.poll() }
     }
@@ -195,8 +219,18 @@ final class LyricsController: ObservableObject {
             permissionNeeded = false
         }
 
-        anchorPos = np.position
-        anchorAt = Date()
+        // Namespace keys by source so Apple Music / Spotify ids never collide.
+        let key = "\(kind.rawValue)::\(np.trackId)"
+
+        // Scrub-bounce guard: right after a seek the player still reports the
+        // pre-seek position for a beat. Re-anchoring to that stale value would
+        // snap the lyrics back and then forward again — inside the grace
+        // window we trust our own clock (set optimistically by seek()).
+        let inSeekGrace = key == lastTrackId && Date() < seekGraceUntil
+        if !inSeekGrace {
+            anchorPos = np.position
+            anchorAt = Date()
+        }
         playing = np.isPlaying
         isPlaying = np.isPlaying
         trackDuration = np.duration
@@ -205,8 +239,6 @@ final class LyricsController: ObservableObject {
             if longIdle { longIdle = false }
         }
 
-        // Namespace keys by source so Apple Music / Spotify ids never collide.
-        let key = "\(kind.rawValue)::\(np.trackId)"
         guard key != lastTrackId else { return } // same song
         lastTrackId = key
         title = np.title
@@ -410,6 +442,7 @@ final class LyricsController: ObservableObject {
     /// while it's non-empty the 10Hz tick keeps re-asserting a lyric phase,
     /// which is how "Nothing playing" ended up captioning live lyrics.
     private func clearTrack() {
+        lyricsTask?.cancel() // an in-flight fetch for a torn-down track is moot
         lines = []
         allLines = []
         synced = false
@@ -431,6 +464,7 @@ final class LyricsController: ObservableObject {
         active.seek(to: target)
         anchorPos = target // update the clock immediately for a snappy jump
         anchorAt = Date()
+        seekGraceUntil = Date().addingTimeInterval(1.5) // ignore stale reports
         resync()
         refreshSoon()
     }

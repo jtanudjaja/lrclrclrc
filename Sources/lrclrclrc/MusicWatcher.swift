@@ -33,17 +33,24 @@ protocol PlayerSource {
 /// commas/quotes survives intact. `durationScale` converts the app's duration
 /// unit to seconds (Spotify reports milliseconds); `idProperty` is the track's
 /// stable id key ("persistent ID" for Music, "id" for Spotify).
+///
+/// Thread-safety: NSAppleScript is not thread-safe, so *every* execution —
+/// polls and playback commands alike — is confined to the one serial `queue`.
+/// `poll()` must already be called on it; commands dispatch themselves onto it
+/// (fire-and-forget), so a button press can never race a poll mid-execution.
 final class AppleScriptPlayer: PlayerSource {
     private static let sep = "\u{1F}"
     private let appName: String
     private let durationScale: Double
     private let source: String
-    // Created lazily on first poll so it lives on whatever (single) queue polls.
+    private let queue: DispatchQueue
+    // Created lazily on first poll; only ever touched on `queue`.
     private var script: NSAppleScript?
 
-    init(appName: String, idProperty: String, durationScale: Double) {
+    init(appName: String, idProperty: String, durationScale: Double, queue: DispatchQueue) {
         self.appName = appName
         self.durationScale = durationScale
+        self.queue = queue
         self.source = """
         set d to (ASCII character 31)
         tell application "System Events"
@@ -98,7 +105,7 @@ final class AppleScriptPlayer: PlayerSource {
         return np
     }
 
-    // MARK: - Playback commands
+    // MARK: - Playback commands (dispatched onto the script queue)
 
     func playPause() { run("playpause") }
     func nextTrack() { run("next track") }
@@ -106,8 +113,11 @@ final class AppleScriptPlayer: PlayerSource {
     func seek(to seconds: Double) { run("set player position to \(seconds)") }
 
     private func run(_ command: String) {
-        guard let script = NSAppleScript(source: "tell application \"\(appName)\" to \(command)") else { return }
-        var err: NSDictionary?
-        script.executeAndReturnError(&err)
+        let src = "tell application \"\(appName)\" to \(command)"
+        queue.async {
+            guard let script = NSAppleScript(source: src) else { return }
+            var err: NSDictionary?
+            script.executeAndReturnError(&err)
+        }
     }
 }

@@ -30,9 +30,13 @@ final class DiskLyricsCache {
 
     func load(_ key: String) -> LyricsResult? {
         let url = fileURL(for: key)
-        guard let data = try? Data(contentsOf: url),
-              let result = try? JSONDecoder().decode(LyricsResult.self, from: data),
-              !result.lines.isEmpty else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let result = try? JSONDecoder().decode(LyricsResult.self, from: data),
+              !result.lines.isEmpty else {
+            // Corrupt or empty entry — self-delete so it can't fail forever.
+            io.async { try? FileManager.default.removeItem(at: url) }
+            return nil
+        }
         // Touch so pruning treats it as recently played.
         io.async {
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
