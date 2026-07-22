@@ -91,6 +91,30 @@ final class EdgeResizeView: NSView {
         return head
     }
 
+    /// Resize cursor for a point in SwiftUI-local (top-left origin) coordinates,
+    /// or nil when the point isn't in the edge band. Used by OverlayView's
+    /// onContinuousHover, which runs inside SwiftUI's own hover pipeline — the
+    /// only place a cursor set() reliably beats the hosting view's built-in
+    /// cursor management (the thing that kept overriding the arrows).
+    static func resizeCursor(at p: CGPoint, in size: CGSize, thickness t: CGFloat = 8) -> NSCursor? {
+        var e: Edge = []
+        if p.x <= t { e.insert(.left) }
+        if p.x >= size.width - t { e.insert(.right) }
+        if p.y <= t { e.insert(.top) }                 // visual top (SwiftUI y-down)
+        if p.y >= size.height - t { e.insert(.bottom) }
+        guard !e.isEmpty else { return nil }
+        let horizontalHit = e.contains(.left) || e.contains(.right)
+        let verticalHit = e.contains(.top) || e.contains(.bottom)
+        switch (horizontalHit, verticalHit) {
+        case (true, true):
+            let nwse = (e.contains(.left) && e.contains(.top)) || (e.contains(.right) && e.contains(.bottom))
+            return nwse ? diagonalNWSE : diagonalNESW
+        case (true, false): return horizontal
+        case (false, true): return vertical
+        default: return nil
+        }
+    }
+
     /// The cursor matching a grabbed edge/corner (used to hold it during drags).
     private func cursor(for e: Edge) -> NSCursor {
         let horizontalHit = e.contains(.left) || e.contains(.right)

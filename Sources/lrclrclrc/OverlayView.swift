@@ -87,6 +87,18 @@ struct OverlayView: View {
         .animation(.easeInOut(duration: 0.28), value: hovered)
         .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
         .onHover { hovered = $0 }
+        // Cursor authority for the whole card, run inside SwiftUI's own hover
+        // pipeline so it beats the hosting view's built-in cursor handling:
+        // resize arrows in the 8pt edge band, plain arrow everywhere else
+        // (which also kills the I-beam SwiftUI shows over text).
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point):
+                (EdgeResizeView.resizeCursor(at: point, in: size) ?? .arrow).set()
+            case .ended:
+                NSCursor.arrow.set()
+            }
+        }
     }
 
     // MARK: - Header (measured, never truncated, never resizes the window)
