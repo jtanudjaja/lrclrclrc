@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import ServiceManagement
 
 /// Where lyrics are shown. The overlay and the menu bar are mutually exclusive,
 /// so this is one setting rather than two toggles.
@@ -23,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var displayMode: DisplayMode = .overlay
     private var modeItems: [DisplayMode: NSMenuItem] = [:]
     private var lyricsCancellable: AnyCancellable?
+
+    private var sourceItems: [PlayerSourceKind: NSMenuItem] = [:]
+    private var offsetItem: NSMenuItem?
+    private var launchAtLoginItem: NSMenuItem?
 
     private let statusIcon = NSImage(
         systemSymbolName: "music.note.list",
@@ -56,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Settings.clickThrough { setClickThrough(true) }
         let mode = DisplayMode(rawValue: Settings.displayMode) ?? .overlay
         setDisplayMode(mode)
+
+        let kind = controller.currentSource
+        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+        updateOffsetTitle()
     }
 
     private func setupStatusItem() {
@@ -64,29 +73,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        // Merged display-mode picker (radio): Overlay / Menu Bar / Hidden.
+        // Where lyrics show (radio): Overlay / Menu Bar / Hidden.
         let displaySubmenu = NSMenu()
         displaySubmenu.addItem(modeItem("Overlay", .overlay))
         displaySubmenu.addItem(modeItem("Menu Bar", .menuBar))
         displaySubmenu.addItem(modeItem("Hidden", .hidden))
-        let displayParent = NSMenuItem(title: "Show Lyrics In", action: nil, keyEquivalent: "")
-        displayParent.submenu = displaySubmenu
-        menu.addItem(displayParent)
+        menu.addItem(submenu("Show Lyrics In", displaySubmenu))
+
+        // Which player to follow (radio): Auto / Apple Music / Spotify.
+        let sourceSubmenu = NSMenu()
+        sourceSubmenu.addItem(sourceItem("Auto", .auto))
+        sourceSubmenu.addItem(sourceItem("Apple Music", .appleMusic))
+        sourceSubmenu.addItem(sourceItem("Spotify", .spotify))
+        menu.addItem(submenu("Source", sourceSubmenu))
 
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(.separator())
         menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
         menu.addItem(makeItem("Smaller", #selector(shrink), "-"))
 
+        // Timing offset (fix lyrics that run early/late).
+        let timingSubmenu = NSMenu()
+        timingSubmenu.addItem(makeItem("Lyrics Earlier", #selector(lyricsEarlier), ""))
+        timingSubmenu.addItem(makeItem("Lyrics Later", #selector(lyricsLater), ""))
+        timingSubmenu.addItem(.separator())
+        let offset = NSMenuItem(title: offsetTitle(), action: nil, keyEquivalent: "")
+        offset.isEnabled = false
+        offsetItem = offset
+        timingSubmenu.addItem(offset)
+        timingSubmenu.addItem(makeItem("Reset Timing", #selector(resetTiming), ""))
+        menu.addItem(submenu("Timing", timingSubmenu))
+
         let ct = makeItem("Click-Through (ignore mouse)", #selector(toggleClickThrough), "t")
         clickThroughItem = ct
         menu.addItem(ct)
+
+        let login = makeItem("Launch at Login", #selector(toggleLaunchAtLogin), "")
+        launchAtLoginItem = login
+        menu.addItem(login)
 
         menu.addItem(.separator())
         menu.addItem(makeItem("Quit lrclrclrc", #selector(quit), "q"))
         item.menu = menu
 
         statusItem = item
+        updateLaunchAtLoginState()
     }
 
     private func makeItem(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
@@ -95,11 +126,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    private func submenu(_ title: String, _ sub: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = sub
+        return item
+    }
+
     private func modeItem(_ title: String, _ mode: DisplayMode) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: #selector(selectDisplayMode(_:)), keyEquivalent: "")
         item.target = self
         item.representedObject = mode.rawValue
         modeItems[mode] = item
+        return item
+    }
+
+    private func sourceItem(_ title: String, _ kind: PlayerSourceKind) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(selectSource(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = kind.rawValue
+        sourceItems[kind] = item
         return item
     }
 
@@ -144,6 +189,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func enlarge() { panel?.scaleBy(1.15) }
     @objc private func shrink() { panel?.scaleBy(0.87) }
+
+    // MARK: - Source
+
+    @objc private func selectSource(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let kind = PlayerSourceKind(rawValue: raw) else { return }
+        controller.setSource(kind)
+        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+    }
+
+    // MARK: - Timing
+
+    @objc private func lyricsEarlier() { controller.nudgeOffset(0.25); updateOffsetTitle() }
+    @objc private func lyricsLater() { controller.nudgeOffset(-0.25); updateOffsetTitle() }
+    @objc private func resetTiming() { controller.resetOffset(); updateOffsetTitle() }
+
+    private func offsetTitle() -> String {
+        String(format: "Offset: %+.2f s", controller.offset)
+    }
+
+    private func updateOffsetTitle() {
+        offsetItem?.title = offsetTitle()
+    }
+
+    // MARK: - Launch at login
+
+    @objc private func toggleLaunchAtLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("lrclrclrc: launch-at-login toggle failed: \(error)")
+        }
+        updateLaunchAtLoginState()
+    }
+
+    private func updateLaunchAtLoginState() {
+        launchAtLoginItem?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+    }
 
     @objc private func openFindLyrics() {
         if let window = findLyricsWindow {

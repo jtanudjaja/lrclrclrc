@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Owns playback state and drives the overlay. Polls Music once a second and
 /// extrapolates the position at ~10fps between polls so the highlighted line
@@ -12,15 +13,23 @@ final class LyricsController: ObservableObject {
     @Published var nextLine = ""
     @Published var status = ""
     @Published var isPlaying = false
+    @Published var permissionNeeded = false
 
-    private let watcher = MusicWatcher()
+    private let music: PlayerSource = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1)
+    private let spotify: PlayerSource = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001)
+    private var active: PlayerSource
+    private var sourceKind = PlayerSourceKind(rawValue: Settings.source) ?? .auto
+
     private let overrides = OverrideStore()
+    private var syncOffset = Settings.syncOffset
 
     private var lines: [LrcLine] = []
     private var synced = false
     private var currentIndex = -1
     private var lastTrackId = ""
     private var cache: [String: LyricsResult] = [:]
+
+    init() { active = music }
 
     // Playback clock.
     private var anchorPos = 0.0
@@ -44,24 +53,36 @@ final class LyricsController: ObservableObject {
     // MARK: - Polling
 
     private func poll() {
-        let np = watcher.poll()
+        let (np, watcher) = readActive()
+        active = watcher
         switch np.state {
-        case .notRunning:
+        case .permissionDenied:
+            permissionNeeded = true
             title = "lrclrclrc"
-            artist = "Apple Music isn’t running"
+            artist = "Automation permission needed"
+            clearLines()
+            status = ""
+            lastTrackId = ""
+            isPlaying = false
+            return
+        case .notRunning:
+            permissionNeeded = false
+            title = "lrclrclrc"
+            artist = "No music playing"
             clearLines()
             status = ""
             lastTrackId = ""
             isPlaying = false
             return
         case .stopped:
+            permissionNeeded = false
             artist = "Nothing playing"
             clearLines()
             lastTrackId = ""
             isPlaying = false
             return
         case .ok:
-            break
+            permissionNeeded = false
         }
 
         anchorPos = np.position
@@ -133,14 +154,76 @@ final class LyricsController: ObservableObject {
 
     // MARK: - Playback controls
 
-    func playPause() { watcher.playPause(); refreshSoon() }
-    func nextTrack() { watcher.nextTrack(); refreshSoon() }
-    func previousTrack() { watcher.previousTrack(); refreshSoon() }
+    func playPause() { active.playPause(); refreshSoon() }
+    func nextTrack() { active.nextTrack(); refreshSoon() }
+    func previousTrack() { active.previousTrack(); refreshSoon() }
 
-    /// Give Music a moment to update, then re-poll so state/track catches up.
+    /// Give the player a moment to update, then re-poll so state/track catches up.
     private func refreshSoon() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.poll()
+        }
+    }
+
+    // MARK: - Source
+
+    var currentSource: PlayerSourceKind { sourceKind }
+
+    func setSource(_ kind: PlayerSourceKind) {
+        sourceKind = kind
+        Settings.source = kind.rawValue
+        lastTrackId = "" // force reload from the newly selected source
+        poll()
+    }
+
+    /// Resolve the now-playing reading and the source that produced it.
+    private func readActive() -> (NowPlaying, PlayerSource) {
+        switch sourceKind {
+        case .appleMusic:
+            return (music.poll(), music)
+        case .spotify:
+            return (spotify.poll(), spotify)
+        case .auto:
+            let m = music.poll()
+            if m.state == .ok { return (m, music) }
+            let s = spotify.poll()
+            if s.state == .ok { return (s, spotify) }
+            if m.state == .permissionDenied || s.state == .permissionDenied {
+                return (NowPlaying(state: .permissionDenied), active)
+            }
+            return (m, music)
+        }
+    }
+
+    // MARK: - Sync offset
+
+    var offset: Double { syncOffset }
+
+    func nudgeOffset(_ delta: Double) {
+        syncOffset = min(max(syncOffset + delta, -10), 10)
+        Settings.syncOffset = syncOffset
+        resync()
+    }
+
+    func resetOffset() {
+        syncOffset = 0
+        Settings.syncOffset = 0
+        resync()
+    }
+
+    private func resync() {
+        guard synced, !lines.isEmpty else { return }
+        currentIndex = -1
+        let idx = indexForTime(estimatedPosition())
+        currentIndex = idx
+        render(idx)
+    }
+
+    // MARK: - Permissions
+
+    func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -195,7 +278,8 @@ final class LyricsController: ObservableObject {
     }
 
     private func estimatedPosition() -> Double {
-        playing ? anchorPos + Date().timeIntervalSince(anchorAt) : anchorPos
+        let base = playing ? anchorPos + Date().timeIntervalSince(anchorAt) : anchorPos
+        return base + syncOffset
     }
 
     /// Last line whose timestamp is <= t (binary search).

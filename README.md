@@ -1,13 +1,13 @@
 # lrclrclrc
 
-A floating, always-on-top **lyrics overlay for Apple Music on macOS**, written
-as a native **SwiftUI / AppKit** menu-bar app. It watches whatever's playing in
-the Music app, pulls time-synced lyrics from [LRCLIB](https://lrclib.net) (free,
-no API key), and highlights each line in a translucent panel that stays above
-your other apps and follows you across Spaces and full-screen apps.
+A floating, always-on-top **lyrics overlay for Apple Music and Spotify on
+macOS**, written as a native **SwiftUI / AppKit** menu-bar app. It watches
+whatever's playing, pulls time-synced lyrics from [LRCLIB](https://lrclib.net)
+(free, no API key), and highlights each line in a translucent panel that stays
+above your other apps and follows you across Spaces and full-screen apps.
 
-> **macOS only** (13 Ventura or later). Track detection talks to the Music app,
-> so it only does anything useful on a Mac running Apple Music.
+> **macOS only** (13 Ventura or later). Track detection talks to Apple Music /
+> Spotify over AppleScript, so it needs one of them running.
 
 ## How it works
 
@@ -58,10 +58,17 @@ you can show/hide the overlay, toggle click-through, and quit.
   for room), or **Hidden**. In Overlay mode, **drag** the card to move it, drag
   its edges/corners to resize (lyrics scale with it), and hover it to reveal
   **⏮ ⏯ ⏭ playback controls** (when the window is big enough).
+- **Source** — which player to follow: **Auto** (whichever is playing), **Apple
+  Music**, or **Spotify**.
 - **Find Lyrics…** — when a song has no lyrics, open lrclib.net to look it up,
   then paste the `.lrc` (timed) or plain text; it's remembered for that track.
 - **Larger / Smaller** — step the overlay size.
+- **Timing** — nudge lyrics **earlier/later** (±0.25s) to fix drift, or reset.
 - **Click-Through** — the overlay ignores the mouse so clicks land behind it.
+- **Launch at Login** — start automatically when you log in.
+
+If macOS Automation permission is denied, the overlay shows a **Grant
+Automation access** button that opens the right System Settings pane.
 
 The overlay's **position and size** and these toggle states are remembered
 between launches (stored in `UserDefaults`), so you set things up once.

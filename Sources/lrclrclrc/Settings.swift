@@ -9,6 +9,8 @@ enum Settings {
         static let overlayFrame = "overlayFrame"
         static let clickThrough = "clickThrough"
         static let displayMode = "displayMode"
+        static let source = "source"
+        static let syncOffset = "syncOffset"
     }
 
     /// Overlay window frame (position + size), stored as a string.
@@ -33,5 +35,17 @@ enum Settings {
     static var displayMode: String {
         get { defaults.string(forKey: Key.displayMode) ?? DisplayMode.overlay.rawValue }
         set { defaults.set(newValue, forKey: Key.displayMode) }
+    }
+
+    /// Raw value of PlayerSourceKind ("auto" / "appleMusic" / "spotify").
+    static var source: String {
+        get { defaults.string(forKey: Key.source) ?? PlayerSourceKind.auto.rawValue }
+        set { defaults.set(newValue, forKey: Key.source) }
+    }
+
+    /// Lyrics timing offset in seconds (+ = show lyrics earlier).
+    static var syncOffset: Double {
+        get { defaults.double(forKey: Key.syncOffset) }
+        set { defaults.set(newValue, forKey: Key.syncOffset) }
     }
 }

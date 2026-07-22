@@ -28,6 +28,18 @@ struct OverlayView: View {
             let showStatus = geo.size.height >= 138
 
             VStack(spacing: 4 * scale) {
+                if controller.permissionNeeded {
+                    Button(action: { controller.openAutomationSettings() }) {
+                        Text("⚠ Grant Automation access")
+                            .font(.system(size: 12 * scale, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10 * scale)
+                            .padding(.vertical, 4 * scale)
+                            .background(Capsule().fill(Color.orange.opacity(0.55)))
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 if showContext {
                     HStack(spacing: 8 * scale) {
                         Text(controller.title)
