@@ -71,6 +71,7 @@ final class LyricsController: ObservableObject {
     private var isActive = false            // last poll found a playing/paused track
     private var idleTickCounter = 0         // throttle polling while idle
     private var retryAttempt = 0            // fetch backoff: 5s, 10s, 20s, 40s, 60s cap
+    private var notOkStreak = 0             // consecutive stopped/notRunning polls
 
     init() { active = music }
 
@@ -164,35 +165,32 @@ final class LyricsController: ObservableObject {
             permissionNeeded = true
             title = "lrclrclrc"
             artist = ""
-            clearLines()
+            clearTrack()
             status = ""
             lastTrackId = ""
             isPlaying = false
             playing = false
             stagePhase = .permission
             return
-        case .notRunning:
+        case .notRunning, .stopped:
+            // Debounce: a single stopped/not-running read is often a transient
+            // blip (track transition, AppleScript hiccup). Tearing the display
+            // down on one blip made the header flash "Nothing playing" over
+            // live lyrics and blink on reload — require two misses in a row.
+            notOkStreak += 1
+            if notOkStreak < 2, !lastTrackId.isEmpty { return }
             permissionNeeded = false
             title = "Nothing playing"
             artist = ""
-            clearLines()
+            clearTrack()
             status = ""
             lastTrackId = ""
             isPlaying = false
             playing = false
             stagePhase = .idle
             return
-        case .stopped:
-            permissionNeeded = false
-            title = "Nothing playing"
-            artist = ""
-            clearLines()
-            lastTrackId = ""
-            isPlaying = false
-            playing = false
-            stagePhase = .idle
-            return
         case .ok:
+            notOkStreak = 0
             permissionNeeded = false
         }
 
@@ -385,6 +383,19 @@ final class LyricsController: ObservableObject {
         prevLine = ""
         currentLine = ""
         nextLine = ""
+    }
+
+    /// Full lyric-state teardown for empty states. Clearing `lines` matters:
+    /// while it's non-empty the 10Hz tick keeps re-asserting a lyric phase,
+    /// which is how "Nothing playing" ended up captioning live lyrics.
+    private func clearTrack() {
+        lines = []
+        allLines = []
+        synced = false
+        isSynced = false
+        currentIndex = -1
+        currentLineIndex = -1
+        clearLines()
     }
 
     // MARK: - Playback controls
