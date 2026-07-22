@@ -36,12 +36,14 @@ final class AppleScriptPlayer: PlayerSource {
     private static let sep = "\u{1F}"
     private let appName: String
     private let durationScale: Double
-    private let script: NSAppleScript?
+    private let source: String
+    // Created lazily on first poll so it lives on whatever (single) queue polls.
+    private var script: NSAppleScript?
 
     init(appName: String, idProperty: String, durationScale: Double) {
         self.appName = appName
         self.durationScale = durationScale
-        let source = """
+        self.source = """
         set d to (ASCII character 31)
         tell application "System Events"
           set isRunning to (exists (processes where name is "\(appName)"))
@@ -64,10 +66,10 @@ final class AppleScriptPlayer: PlayerSource {
           end try
         end tell
         """
-        script = NSAppleScript(source: source)
     }
 
     func poll() -> NowPlaying {
+        if script == nil { script = NSAppleScript(source: source) }
         guard let script else { return NowPlaying(state: .notRunning) }
         var err: NSDictionary?
         let desc = script.executeAndReturnError(&err)
