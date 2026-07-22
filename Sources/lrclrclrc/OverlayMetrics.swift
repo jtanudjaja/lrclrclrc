@@ -108,9 +108,4 @@ enum OverlayMetrics {
         return CGSize(width: (minWidthBase * fs).rounded(), height: height.rounded())
     }
 
-    /// Maximum size scales with text size so the floor can never exceed it.
-    static func maxContentSize(fontScale: Double) -> CGSize {
-        let fs = max(1, CGFloat(fontScale))
-        return CGSize(width: 1400 * fs, height: 560 * fs)
-    }
 }

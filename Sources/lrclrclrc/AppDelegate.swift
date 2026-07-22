@@ -100,11 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             clickThrough: clickThrough,
             screenHeight: (panel.screen ?? NSScreen.main)?.visibleFrame.height
         )
-        panel.updateSizeBounds(
-            min: minSize,
-            max: OverlayMetrics.maxContentSize(fontScale: appearance.fontScale),
-            growNow: growNow
-        )
+        panel.updateFloor(minSize, growNow: growNow)
     }
 
     private func showOnboarding() {

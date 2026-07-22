@@ -70,6 +70,7 @@ final class LyricsController: ObservableObject {
     private var pollInFlight = false        // coalesce: skip if a read is running
     private var isActive = false            // last poll found a playing/paused track
     private var idleTickCounter = 0         // throttle polling while idle
+    private var retryAttempt = 0            // fetch backoff: 5s, 10s, 20s, 40s, 60s cap
 
     init() { active = music }
 
@@ -212,6 +213,7 @@ final class LyricsController: ObservableObject {
         title = np.title
         artist = np.artist
         currentIndex = -1
+        retryAttempt = 0 // fresh track, fresh backoff
         offset = offsets.offset(for: key)
 
         // A manual override wins over anything from the network.
@@ -250,14 +252,19 @@ final class LyricsController: ObservableObject {
         guard key == lastTrackId else { return } // track changed while fetching
         switch outcome {
         case .found(let res):
+            retryAttempt = 0
             cache.set(res, for: key)
             apply(res)
         case .notFound:
+            retryAttempt = 0
             let empty = LyricsResult(synced: false, lines: [])
             cache.set(empty, for: key) // genuine miss — remember it
             apply(empty)
         case .failed:
-            // Don't cache a transient failure; retry so a network blip recovers.
+            // Don't cache a transient failure; retry with exponential backoff
+            // (5s → 10 → 20 → 40 → 60s cap) so a blip recovers fast but an
+            // outage or rate limit isn't hammered — hammering a throttled API
+            // just keeps you throttled.
             status = "couldn’t reach LRCLIB — retrying…"
             stagePhase = .searching
             scheduleRetry(for: key, meta: meta)
@@ -265,7 +272,9 @@ final class LyricsController: ObservableObject {
     }
 
     private func scheduleRetry(for key: String, meta: TrackMeta) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        let delay = min(60.0, 5.0 * pow(2.0, Double(retryAttempt)))
+        retryAttempt += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, key == self.lastTrackId, !self.cache.contains(key) else { return }
             self.fetchLyrics(for: key, meta: meta)
         }

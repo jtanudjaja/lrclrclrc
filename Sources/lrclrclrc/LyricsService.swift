@@ -113,6 +113,7 @@ enum LyricsService {
 
     private static func request(_ url: URL) async -> HTTPResult {
         var req = URLRequest(url: url)
+        req.timeoutInterval = 10 // fail fast so the backoff cycle stays honest
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         do {

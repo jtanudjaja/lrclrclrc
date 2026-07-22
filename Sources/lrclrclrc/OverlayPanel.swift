@@ -23,10 +23,10 @@ final class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
-        // Freeform resize (drag any edge). Real bounds come from the live floor
-        // (AppDelegate.refreshFloor) as soon as launch wiring completes; these
-        // are just sane placeholders for the first frame.
-        maxSize = NSSize(width: 1400, height: 560)
+        // Freeform resize (drag any edge). There is no maximum — the screen is
+        // the practical bound and making the card huge is the user's call. The
+        // real minimum comes from the live floor (AppDelegate.refreshFloor) as
+        // soon as launch wiring completes; this is a first-frame placeholder.
         minSize = NSSize(width: 320, height: 160)
 
         self.contentView = contentView
@@ -80,13 +80,11 @@ final class OverlayPanel: NSPanel {
     var onResizeSettle: (() -> Void)?
     func settleAfterResize() { onResizeSettle?() }
 
-    /// Apply new live-floor bounds. `growNow` also grows the window immediately
-    /// if it is below the new minimum (text-size bump, long-lined track);
-    /// omitted during a live edge drag so the app never fights the user's hand.
-    func updateSizeBounds(min newMin: CGSize, max newMax: CGSize, growNow: Bool) {
-        maxSize = NSSize(width: newMax.width, height: newMax.height)
-        minSize = NSSize(width: min(newMin.width, maxSize.width),
-                         height: min(newMin.height, maxSize.height))
+    /// Apply a new live floor. `growNow` also grows the window immediately if
+    /// it is below the new minimum (text-size bump, long-lined track); omitted
+    /// during a live edge drag so the app never fights the user's hand.
+    func updateFloor(_ newMin: CGSize, growNow: Bool) {
+        minSize = NSSize(width: newMin.width, height: newMin.height)
         if growNow { growToMinimum() }
     }
 
