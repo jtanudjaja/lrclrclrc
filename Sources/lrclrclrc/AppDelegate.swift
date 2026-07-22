@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clickThroughItem: NSMenuItem?
 
     private var findLyricsWindow: NSWindow?
+    private var fullLyricsWindow: NSWindow?
     private var preferencesWindow: NSWindow?
     private let appearance = Appearance()
 
@@ -130,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sourceSubmenu.addItem(sourceItem("Spotify", .spotify))
         menu.addItem(submenu("Source", sourceSubmenu))
 
+        menu.addItem(makeItem("Full Lyrics…", #selector(openFullLyrics), "f"))
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(makeItem("Preferences…", #selector(openPreferences), ""))
         menu.addItem(.separator())
@@ -264,6 +266,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateLaunchAtLoginState() {
         launchAtLoginItem?.state = isLaunchAtLoginOn ? .on : .off
+    }
+
+    @objc private func openFullLyrics() {
+        if let window = fullLyricsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hosting = NSHostingController(rootView: FullLyricsView(controller: controller))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Lyrics"
+        window.styleMask = [.titled, .closable, .resizable]
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 380, height: 520))
+        window.center()
+        fullLyricsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Preferences

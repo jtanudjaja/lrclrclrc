@@ -25,6 +25,7 @@ protocol PlayerSource {
     func playPause()
     func nextTrack()
     func previousTrack()
+    func seek(to seconds: Double)
 }
 
 /// Reads/controls a scriptable player (Apple Music, Spotify) via AppleScript.
@@ -102,6 +103,7 @@ final class AppleScriptPlayer: PlayerSource {
     func playPause() { run("playpause") }
     func nextTrack() { run("next track") }
     func previousTrack() { run("previous track") }
+    func seek(to seconds: Double) { run("set player position to \(seconds)") }
 
     private func run(_ command: String) {
         guard let script = NSAppleScript(source: "tell application \"\(appName)\" to \(command)") else { return }

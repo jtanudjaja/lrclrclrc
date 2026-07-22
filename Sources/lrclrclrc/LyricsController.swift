@@ -17,6 +17,8 @@ final class LyricsController: ObservableObject {
     @Published var permissionNeeded = false
     @Published private(set) var offset: Double = 0
     @Published private(set) var isSynced = false
+    @Published private(set) var allLines: [LrcLine] = []
+    @Published private(set) var currentLineIndex = -1
 
     private let music: PlayerSource = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1)
     private let spotify: PlayerSource = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001)
@@ -237,9 +239,11 @@ final class LyricsController: ObservableObject {
 
     private func apply(_ res: LyricsResult) {
         lines = res.lines
+        allLines = res.lines
         synced = res.synced && lines.contains { $0.time != nil }
         isSynced = synced
         currentIndex = -1
+        currentLineIndex = -1
 
         if lines.isEmpty {
             currentLine = "— no lyrics found —"
@@ -290,6 +294,7 @@ final class LyricsController: ObservableObject {
     }
 
     private func render(_ index: Int) {
+        currentLineIndex = index
         currentLine = (index >= 0 && index < lines.count) ? lines[index].text : (synced ? "♪" : "")
         prevLine = (index - 1 >= 0 && index - 1 < lines.count) ? lines[index - 1].text : ""
         nextLine = (index + 1 >= 0 && index + 1 < lines.count) ? lines[index + 1].text : ""
@@ -306,6 +311,16 @@ final class LyricsController: ObservableObject {
     func playPause() { active.playPause(); refreshSoon() }
     func nextTrack() { active.nextTrack(); refreshSoon() }
     func previousTrack() { active.previousTrack(); refreshSoon() }
+
+    /// Seek playback to a timestamp (used by the full-lyrics view's tap-to-jump).
+    func seek(to seconds: Double) {
+        let target = max(0, seconds)
+        active.seek(to: target)
+        anchorPos = target // update the clock immediately for a snappy jump
+        anchorAt = Date()
+        resync()
+        refreshSoon()
+    }
 
     /// Give the player a moment to update, then re-poll so state/track catches up.
     private func refreshSoon() {
