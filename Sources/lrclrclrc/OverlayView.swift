@@ -18,27 +18,30 @@ struct OverlayView: View {
             let lineSize = 15 * fs
             let radius = 18 + 6 * (fs - 1)
 
-            // Chrome visibility keyed to window size only (never to hover), so
-            // resizing is the only thing that adds/removes it. Thresholds are
-            // fs-scaled and sized so each piece of chrome only appears once the
-            // window is genuinely tall enough to hold it *plus* a lyric line —
-            // otherwise the stack would overflow the card and clip the title.
+            // Three components — header (top), lyrics (middle), footer (status +
+            // controls, bottom) — each reacting to window height and text size.
+            // Visibility is keyed to window size only (never to hover), so
+            // resizing is the only thing that adds/removes a component. The panel
+            // enforces a minimum size (OverlayMetrics.minContentSize) so all
+            // three normally always fit; these thresholds are the graceful
+            // fallback if the window is ever forced smaller than that floor.
             let h = geo.size.height
-            let showHeader = h >= 92 * fs
-            let showStatus = h >= 148 * fs && !controller.status.isEmpty
-            let roomForControls = h >= 188 * fs && geo.size.width >= 240 * fs
+            let showHeader = OverlayMetrics.headerVisible(height: h, fs: fs)
+            let showStatus = OverlayMetrics.statusVisible(height: h, fs: fs) && !controller.status.isEmpty
+            let roomForControls = OverlayMetrics.controlsFit(height: h, width: geo.size.width, fs: fs)
             let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
 
-            // Control space is *reserved whenever it could appear* — not when it
-            // is currently shown — so hovering fades the controls into already-
-            // reserved space instead of reflowing the lyric column. This is what
-            // keeps the title/credit from jumping around on hover.
-            let controlsH: CGFloat = roomForControls ? (controller.isSynced ? 52 * fs : 28 * fs) : 0
-            let reserve = 28 * fs
-                + (showHeader ? 22 * fs : 0)
-                + (showStatus ? 16 * fs : 0)
+            // Footer control space is *reserved whenever it could appear* — not
+            // when it is currently shown — so hovering fades the controls into
+            // already-reserved space instead of reflowing the lyric column.
+            let controlsH: CGFloat = roomForControls
+                ? (controller.isSynced ? OverlayMetrics.controlsSyncedH : OverlayMetrics.controlsPlainH) * fs
+                : 0
+            let reserve = (OverlayMetrics.vPadding
+                + (showHeader ? OverlayMetrics.headerH : 0)
+                + (showStatus ? OverlayMetrics.statusH : 0)) * fs
                 + controlsH
-            let fitLines = max(1, Int((geo.size.height - reserve) / (lineSize * 1.7)))
+            let fitLines = max(1, Int((h - reserve) / (OverlayMetrics.lineUnit * fs)))
             let context = max(0, min(9, (fitLines - 1) / 2))
 
             VStack(spacing: 5 * fs) {

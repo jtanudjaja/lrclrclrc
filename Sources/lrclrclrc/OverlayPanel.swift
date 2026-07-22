@@ -20,16 +20,22 @@ final class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
-        // Freeform resize (drag any edge), bounded so it stays usable.
-        minSize = NSSize(width: 320, height: 90)
+        // Freeform resize (drag any edge), bounded so it stays usable. The
+        // minimum is derived from the current text size so the lyric band always
+        // has room for at least 3 lines plus the header and footer.
         maxSize = NSSize(width: 1400, height: 520)
+        applyMinimum(for: Settings.fontScale)
 
         self.contentView = contentView
 
-        // Restore the last position/size, else default to bottom-center.
+        // Restore the last position/size, else default to bottom-center. Either
+        // way the frame is clamped to the current text-size minimum.
         if let saved = Settings.overlayFrame {
             setFrame(sanitized(saved), display: false)
         } else {
+            let w = max(frame.width, minSize.width)
+            let hgt = max(frame.height, minSize.height)
+            setFrame(NSRect(x: frame.minX, y: frame.minY, width: w, height: hgt), display: false)
             positionBottomCenter()
         }
 
@@ -77,6 +83,31 @@ final class OverlayPanel: NSPanel {
         f.origin.x = centerX - newWidth / 2
         f.origin.y = bottom
         setFrame(f, display: true, animate: true)
+    }
+
+    /// Set the resize floor from the current text size (without moving the
+    /// window). Clamped so it never exceeds the maximum.
+    func applyMinimum(for fontScale: Double) {
+        let m = OverlayMetrics.minContentSize(fontScale: fontScale)
+        minSize = NSSize(width: min(m.width, maxSize.width),
+                         height: min(m.height, maxSize.height))
+    }
+
+    /// React to a text-size change: raise/lower the floor and, if the window is
+    /// now below it, grow it to fit — keeping the bottom-centre anchored so the
+    /// card doesn't jump. This is what guarantees ≥3 lyric lines stay visible as
+    /// the user bumps the text larger.
+    func updateForFontScale(_ fontScale: Double) {
+        applyMinimum(for: fontScale)
+        let f = frame
+        guard f.width < minSize.width || f.height < minSize.height else { return }
+        let newW = max(f.width, minSize.width)
+        let newH = max(f.height, minSize.height)
+        var grown = f
+        grown.origin.x = f.midX - newW / 2
+        grown.origin.y = f.minY // keep the bottom edge pinned
+        grown.size = NSSize(width: newW, height: newH)
+        setFrame(sanitized(grown), display: true, animate: true)
     }
 
     // Never steal focus from the app the user is actually working in.

@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var modeItems: [DisplayMode: NSMenuItem] = [:]
     private var lyricsCancellable: AnyCancellable?
     private var offsetCancellable: AnyCancellable?
+    private var fontScaleCancellable: AnyCancellable?
 
     private var sourceItems: [PlayerSourceKind: NSMenuItem] = [:]
     private var offsetItem: NSMenuItem?
@@ -67,6 +68,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         offsetCancellable = controller.$offset
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateOffsetTitle() }
+
+        // Enforce the "≥3 lyric lines + header + footer" floor: when the text
+        // size changes, raise the panel's minimum and grow it if needed.
+        fontScaleCancellable = appearance.$fontScale
+            .receive(on: RunLoop.main)
+            .sink { [weak self] scale in self?.panel?.updateForFontScale(scale) }
 
         if !Settings.hasOnboarded { showOnboarding() }
     }
