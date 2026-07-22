@@ -239,7 +239,8 @@ struct OverlayView: View {
     }
 
     private func countdownLabel(_ seconds: Int) -> String {
-        String(format: "next line in 0:%02d", max(0, seconds))
+        let s = max(0, seconds)
+        return String(format: "next line in %d:%02d", s / 60, s % 60)
     }
 
     // MARK: - Teleprompter (pixel budget around a pinned center)
@@ -397,9 +398,18 @@ struct OverlayView: View {
         DragGesture(minimumDistance: 6)
             .onChanged { value in
                 if !scrubbing {
-                    // Only predominantly-vertical drags scrub; anything else is
-                    // left alone (the window keeps its drag-to-move behaviour).
-                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    let dx = abs(value.translation.width)
+                    let dy = abs(value.translation.height)
+                    // Predominantly horizontal on the stage: hand the drag to
+                    // the window so the card moves, same as dragging anywhere
+                    // else. (Once handed off, this gesture stream goes quiet.)
+                    guard dy > dx else {
+                        if dx + dy < 24, let event = NSApp.currentEvent,
+                           let window = NSApp.windows.first(where: { $0 is OverlayPanel }) {
+                            window.performDrag(with: event)
+                        }
+                        return
+                    }
                     guard lineCount > 0 else { return }
                     scrubbing = true
                     scrubAnchor = max(0, controller.currentLineIndex)
