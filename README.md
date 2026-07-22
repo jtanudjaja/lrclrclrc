@@ -1,0 +1,78 @@
+# lrclrclrc
+
+A floating, always-on-top **lyrics overlay for Apple Music on macOS**, built
+with Electron. It watches whatever's playing in the Music app, pulls
+time-synced lyrics from [LRCLIB](https://lrclib.net) (free, no API key), and
+highlights each line in a translucent window that stays above your other apps
+and follows you across Spaces and full-screen apps.
+
+> **macOS only.** Track detection uses AppleScript against the Music app, so
+> the overlay only does anything useful on a Mac with Apple Music.
+
+## How it works
+
+Three moving parts, matching the three hard problems of a lyrics overlay:
+
+1. **What's playing** — `src/appleMusic.js` runs a small AppleScript via
+   `osascript` to read the current track's title, artist, album, duration,
+   and *playback position*, once a second.
+2. **The lyrics** — `src/lyrics.js` queries LRCLIB with that track signature.
+   It first tries the exact `/api/get` endpoint, then falls back to
+   `/api/search`. Returned `.lrc` text is parsed into `{ time, text }` lines.
+   Apple's own synced lyrics are licensed and locked in the Music app, so like
+   every other DIY overlay this leans on a third-party source — sync quality
+   therefore varies by song.
+3. **The overlay** — `src/main.js` creates a borderless, transparent
+   `BrowserWindow` pinned with `setAlwaysOnTop(true, 'screen-saver')` and
+   `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`. The
+   renderer (`renderer/`) extrapolates the 1 Hz position samples with a local
+   60fps clock so the highlighted line advances smoothly.
+
+## Run it
+
+```bash
+npm install
+npm start
+```
+
+The app has **no Dock icon** — it lives in the menu bar (the small dot).
+From the menu-bar icon you can show/hide the overlay, toggle click-through,
+and quit. On first run macOS will ask permission for the app (or your
+terminal, in dev) to control the **Music** app and to see **Automation** —
+grant both, otherwise track detection returns nothing.
+
+### Controls
+
+- **Drag** the card anywhere to reposition it.
+- Hover the card to reveal the **☝︎ click-through** and **✕ quit** buttons.
+- **Click-through** makes the overlay ignore the mouse so clicks land on the
+  app behind it (it dims slightly to show it's passive). Toggle it back from
+  the menu-bar icon.
+
+## Project layout
+
+```
+src/
+  main.js        Electron main: window, tray, polling loop, IPC
+  preload.js     Safe contextBridge API exposed to the renderer
+  appleMusic.js  osascript track/position reader
+  lyrics.js      LRCLIB fetch + .lrc parser
+renderer/
+  index.html     Overlay markup
+  overlay.css    Glass card styling
+  overlay.js     Line syncing + rendering
+```
+
+## Notes & limitations
+
+- **Sync accuracy** depends on the LRCLIB entry for the song; some are dead-on,
+  some drift, some only have plain (unsynced) lyrics, some have none.
+- Polling every second keeps it simple and robust. macOS also broadcasts a
+  `com.apple.Music.playerInfo` distributed notification on track changes; a
+  future version could subscribe to that for instant updates.
+- No keys, no accounts, nothing to configure. LRCLIB is queried with a
+  descriptive `User-Agent` as their docs request.
+
+## License
+
+MIT

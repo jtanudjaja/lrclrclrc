@@ -1,0 +1,160 @@
+:root {
+  --bg: rgba(18, 18, 22, 0.72);
+  --fg: rgba(255, 255, 255, 0.55);
+  --fg-strong: rgba(255, 255, 255, 0.98);
+  --accent: #7cc4ff;
+  --radius: 16px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    system-ui, sans-serif;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 22px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: opacity 0.25s ease;
+}
+
+/* The whole card is draggable except interactive controls. */
+.drag-handle {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+  z-index: 0;
+}
+
+.controls,
+.meta,
+.lyrics,
+.status {
+  position: relative;
+  z-index: 1;
+}
+
+.controls {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.card:hover .controls {
+  opacity: 1;
+}
+
+.controls button {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--fg-strong);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.controls button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.artist {
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.lyrics {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.line {
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.line.prev,
+.line.next {
+  font-size: 13px;
+  opacity: 0.45;
+}
+
+.line.current {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--fg-strong);
+  text-shadow: 0 0 18px rgba(124, 196, 255, 0.25);
+}
+
+.line.current.plain {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.status {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  min-height: 12px;
+}
+
+/* Dim the card while click-through is on so it reads as "passive". */
+body.clickthrough .card {
+  opacity: 0.82;
+}

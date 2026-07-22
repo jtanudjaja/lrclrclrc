@@ -1,0 +1,23 @@
+{
+  "name": "lrclrclrc",
+  "version": "0.1.0",
+  "description": "A floating, always-on-top lyrics overlay for Apple Music on macOS, powered by LRCLIB synced lyrics.",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  },
+  "build": {
+    "appId": "net.lrclrclrc.overlay",
+    "productName": "lrclrclrc",
+    "mac": {
+      "category": "public.app-category.music",
+      "target": "dmg"
+    }
+  }
+}
