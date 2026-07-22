@@ -17,6 +17,10 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 
+# Leftover Node/Electron artifacts
+dist/
+node_modules/
+
 # OS junk
 .DS_Store
 
