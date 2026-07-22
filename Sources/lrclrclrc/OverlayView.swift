@@ -88,8 +88,10 @@ struct OverlayView: View {
         }
         .opacity(dimmed ? 0.55 : 1)
         .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
-        // The header is the card's drag handle — grab it to move the window.
-        .background(WindowDragSurface())
+        // The whole header row is the card's drag handle — overlaid (not
+        // background) so grabbing the title/artist text itself also drags;
+        // there's nothing interactive in the header to block.
+        .overlay(WindowDragSurface())
     }
 
     private func headerOneRow(fs: CGFloat) -> some View {
