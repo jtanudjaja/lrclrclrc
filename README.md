@@ -63,7 +63,10 @@ you can show/hide the overlay, toggle click-through, and quit.
 - **Find Lyrics…** — when a song has no lyrics, open lrclib.net to look it up,
   then paste the `.lrc` (timed) or plain text; it's remembered for that track.
 - **Larger / Smaller** — step the overlay size.
-- **Timing** — nudge lyrics **earlier/later** (±0.25s) to fix drift, or reset.
+- **Timing** — nudge lyrics **earlier/later** to fix drift. The offset is
+  remembered **per song**, so each track keeps its own correction. Coarse steps
+  (±0.25s) live in this menu; hover the overlay for fine live −/＋ controls
+  (±0.1s) with the current offset shown.
 - **Click-Through** — the overlay ignores the mouse so clicks land behind it.
 - **Launch at Login** — start automatically when you log in.
 

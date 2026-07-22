@@ -10,7 +10,6 @@ enum Settings {
         static let clickThrough = "clickThrough"
         static let displayMode = "displayMode"
         static let source = "source"
-        static let syncOffset = "syncOffset"
     }
 
     /// Overlay window frame (position + size), stored as a string.
@@ -41,11 +40,5 @@ enum Settings {
     static var source: String {
         get { defaults.string(forKey: Key.source) ?? PlayerSourceKind.auto.rawValue }
         set { defaults.set(newValue, forKey: Key.source) }
-    }
-
-    /// Lyrics timing offset in seconds (+ = show lyrics earlier).
-    static var syncOffset: Double {
-        get { defaults.double(forKey: Key.syncOffset) }
-        set { defaults.set(newValue, forKey: Key.syncOffset) }
     }
 }

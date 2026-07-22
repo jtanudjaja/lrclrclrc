@@ -14,6 +14,8 @@ final class LyricsController: ObservableObject {
     @Published var status = ""
     @Published var isPlaying = false
     @Published var permissionNeeded = false
+    @Published private(set) var offset: Double = 0
+    @Published private(set) var isSynced = false
 
     private let music: PlayerSource = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1)
     private let spotify: PlayerSource = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001)
@@ -21,7 +23,7 @@ final class LyricsController: ObservableObject {
     private var sourceKind = PlayerSourceKind(rawValue: Settings.source) ?? .auto
 
     private let overrides = OverrideStore()
-    private var syncOffset = Settings.syncOffset
+    private let offsets = OffsetStore()
 
     private var lines: [LrcLine] = []
     private var synced = false
@@ -95,6 +97,7 @@ final class LyricsController: ObservableObject {
         title = np.title
         artist = np.artist
         currentIndex = -1
+        offset = offsets.offset(for: np.trackId) // per-track sync correction
 
         // A manual override wins over anything from the network.
         if let manual = overrides.lyrics(for: np.trackId) {
@@ -131,6 +134,7 @@ final class LyricsController: ObservableObject {
     private func apply(_ res: LyricsResult) {
         lines = res.lines
         synced = res.synced && lines.contains { $0.time != nil }
+        isSynced = synced
         currentIndex = -1
 
         if lines.isEmpty {
@@ -195,19 +199,19 @@ final class LyricsController: ObservableObject {
         }
     }
 
-    // MARK: - Sync offset
-
-    var offset: Double { syncOffset }
+    // MARK: - Sync offset (per track)
 
     func nudgeOffset(_ delta: Double) {
-        syncOffset = min(max(syncOffset + delta, -10), 10)
-        Settings.syncOffset = syncOffset
+        guard !lastTrackId.isEmpty else { return }
+        offset = min(max(offset + delta, -10), 10)
+        offsets.set(offset, for: lastTrackId)
         resync()
     }
 
     func resetOffset() {
-        syncOffset = 0
-        Settings.syncOffset = 0
+        guard !lastTrackId.isEmpty else { return }
+        offset = 0
+        offsets.set(0, for: lastTrackId)
         resync()
     }
 
@@ -279,7 +283,7 @@ final class LyricsController: ObservableObject {
 
     private func estimatedPosition() -> Double {
         let base = playing ? anchorPos + Date().timeIntervalSince(anchorAt) : anchorPos
-        return base + syncOffset
+        return base + offset
     }
 
     /// Last line whose timestamp is <= t (binary search).

@@ -90,6 +90,19 @@ struct OverlayView: View {
                     .padding(.top, 2 * scale)
                     .transition(.opacity)
                 }
+
+                // Live per-track timing fine-tune (synced lyrics only).
+                if hovered, controller.isSynced, geo.size.height >= 108, geo.size.width >= 240 {
+                    HStack(spacing: 10 * scale) {
+                        transportButton("minus", scale: scale) { controller.nudgeOffset(-0.1) }
+                        Text(String(format: "%+.1fs", controller.offset))
+                            .font(.system(size: 11 * scale, weight: .medium).monospacedDigit())
+                            .foregroundColor(.white.opacity(0.85))
+                            .frame(minWidth: 42 * scale)
+                        transportButton("plus", scale: scale) { controller.nudgeOffset(0.1) }
+                    }
+                    .transition(.opacity)
+                }
             }
             .foregroundColor(.white)
             .padding(.horizontal, 20 * scale)

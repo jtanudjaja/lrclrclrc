@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var displayMode: DisplayMode = .overlay
     private var modeItems: [DisplayMode: NSMenuItem] = [:]
     private var lyricsCancellable: AnyCancellable?
+    private var offsetCancellable: AnyCancellable?
 
     private var sourceItems: [PlayerSourceKind: NSMenuItem] = [:]
     private var offsetItem: NSMenuItem?
@@ -54,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         controller.start()
         restoreState()
+
+        // Keep the menu's offset readout in sync (offset changes per track and
+        // from the overlay's own timing controls).
+        offsetCancellable = controller.$offset
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateOffsetTitle() }
     }
 
     /// Reapply persisted state on launch (the panel restores its own frame).
