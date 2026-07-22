@@ -554,10 +554,25 @@ struct OverlayView: View {
 
     // MARK: - Chrome
 
+    /// True when the Liquid Glass hover surface is in play (macOS 26 + SDK).
+    private var glassActive: Bool {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) { return true }
+        #endif
+        return false
+    }
+
     private func backgroundLayer(radius: CGFloat) -> some View {
-        ZStack {
+        // With Liquid Glass, the glass itself carries the hover presence — the
+        // scrim barely bumps, or the stacked layers read far more opaque than
+        // the old material ever did. The legacy path keeps its bigger bump
+        // because half-strength ultraThin needs the help.
+        let hoverScrim = glassActive
+            ? min(0.5, appearance.backgroundOpacity + 0.06)
+            : min(0.5, appearance.backgroundOpacity + 0.22)
+        return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
+                .fill(.black.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))
             hoverSurface(radius: radius)
                 .opacity(hovered ? 1 : 0)
         }
@@ -574,8 +589,10 @@ struct OverlayView: View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         #if compiler(>=6.2) // Xcode 26 toolchain (macOS 26 SDK)
         if #available(macOS 26.0, *) {
+            // A whisper of tint for text contrast — heavier tint plus the
+            // scrim read far less transparent than the old material.
             shape.fill(Color.clear)
-                .glassEffect(.regular.tint(.black.opacity(0.25)), in: shape)
+                .glassEffect(.regular.tint(.black.opacity(0.08)), in: shape)
         } else {
             legacyHoverSurface(shape)
         }
