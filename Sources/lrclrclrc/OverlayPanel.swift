@@ -4,12 +4,25 @@ import AppKit
 /// Spaces and stays visible over full-screen apps.
 final class OverlayPanel: NSPanel {
     init(contentView: NSView) {
+        // A *titled* window with invisible chrome, not a borderless one: the
+        // system's resize machinery (edges, cursors, the slightly-outside grab
+        // region) lives in the window frame, and a borderless window whose
+        // content covers everything has no frame left to own the edges — which
+        // is why custom resize code never felt native. Full-size content +
+        // transparent titlebar + hidden buttons looks identical to borderless
+        // while resizing exactly like every other app's window.
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 150),
-            styleMask: [.borderless, .nonactivatingPanel, .resizable],
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
+
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        standardWindowButton(.closeButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
 
         isFloatingPanel = true
         level = .screenSaver // above normal windows
