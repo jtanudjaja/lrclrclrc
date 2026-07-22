@@ -563,13 +563,10 @@ struct OverlayView: View {
     }
 
     private func backgroundLayer(radius: CGFloat) -> some View {
-        // With Liquid Glass, the glass itself carries the hover presence — the
-        // scrim barely bumps, or the stacked layers read far more opaque than
-        // the old material ever did. The legacy path keeps its bigger bump
-        // because half-strength ultraThin needs the help.
-        let hoverScrim = glassActive
-            ? min(0.5, appearance.backgroundOpacity + 0.06)
-            : min(0.5, appearance.backgroundOpacity + 0.22)
+        // The Background-opacity knob drives the *idle* face only. Hover uses a
+        // fixed designed darkness: with Liquid Glass the glass carries the
+        // presence (thin scrim); the legacy material needs more help.
+        let hoverScrim = glassActive ? 0.14 : 0.30
         return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(.black.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))

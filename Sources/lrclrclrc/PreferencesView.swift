@@ -59,7 +59,7 @@ struct PreferencesView: View {
                     Slider(value: $appearance.fontScale, in: 0.7...2.0)
                 }
                 VStack(alignment: .leading) {
-                    Text("Background opacity")
+                    Text("Background opacity (when not hovered)")
                     Slider(value: $appearance.backgroundOpacity, in: 0.0...0.5)
                 }
                 Picker("Accent", selection: $appearance.accent) {
