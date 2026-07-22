@@ -236,7 +236,11 @@ final class LyricsController: ObservableObject {
 
         status = "looking up lyrics…"
         stagePhase = .searching
-        clearLines()
+        // Full teardown, not just the displayed strings — if the previous
+        // track's `lines` lingered, the tick would re-assert a lyric phase and
+        // paint the old song's lyrics under the new song's header for the whole
+        // search (or failed-fetch backoff).
+        clearTrack()
         fetchLyrics(for: key, meta: TrackMeta(
             title: np.title, artist: np.artist, album: np.album, duration: np.duration
         ))
@@ -257,6 +261,9 @@ final class LyricsController: ObservableObject {
 
     private func handleFetch(_ outcome: FetchOutcome, for key: String, meta: TrackMeta) {
         guard key == lastTrackId else { return } // track changed while fetching
+        // If the user pasted manual lyrics while this fetch (or its retry) was
+        // in flight, the manual version wins — never stomp it.
+        guard overrides.lyrics(for: key) == nil else { return }
         switch outcome {
         case .found(let res):
             retryAttempt = 0
@@ -283,7 +290,11 @@ final class LyricsController: ObservableObject {
         let delay = min(60.0, 5.0 * pow(2.0, Double(retryAttempt)))
         retryAttempt += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, key == self.lastTrackId, !self.cache.contains(key) else { return }
+            guard let self,
+                  key == self.lastTrackId,          // track unchanged
+                  !self.cache.contains(key),        // not resolved meanwhile
+                  self.overrides.lyrics(for: key) == nil // no manual override
+            else { return }
             self.fetchLyrics(for: key, meta: meta)
         }
     }
