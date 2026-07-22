@@ -46,17 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingView(rootView: OverlayView(controller: controller, appearance: appearance))
         hosting.autoresizingMask = [.width, .height]
 
-        // Container for the SwiftUI card.
+        // Container: SwiftUI card at the bottom, resize overlay on top.
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 150))
         hosting.frame = container.bounds
         container.addSubview(hosting)
 
         let panel = OverlayPanel(contentView: container)
         self.panel = panel
-        // Resizing is fully native: an ordinary activatable titled window
-        // gets the system's own edge handling and resize cursors (including
-        // the slightly-outside grab area), exactly like any other app's
-        // window. No custom edge view, no custom cursor display.
+        // Resizing is native: a borderless window with .resizable gets the
+        // window server's own edge handling — real cursors (including the
+        // slightly-outside grab area), live clamping to minSize, exactly like
+        // any other app's window. No custom edge view.
 
         setupMainMenu()
         setupStatusItem()
@@ -285,9 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setClickThrough(_ on: Bool) {
         clickThrough = on
-        // Click-through carries the whole passive overlay profile (top level,
-        // non-activating, mouse-transparent), not just ignoresMouseEvents.
-        panel?.applyProfile(passive: on)
+        panel?.ignoresMouseEvents = on
         clickThroughItem?.state = on ? .on : .off
         Settings.clickThrough = on
         // The overlay drops its footer reserve when controls are unreachable,

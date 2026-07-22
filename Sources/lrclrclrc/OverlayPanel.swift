@@ -1,10 +1,7 @@
 import AppKit
 
-/// The transparent lyric-card window. Interactive by default: an ordinary,
-/// activatable window at FaceTime-style floating level — above normal windows,
-/// yet the system's native resize machinery (cursors included) fully applies.
-/// While click-through is on it switches to the passive overlay profile
-/// (screen-saver level, non-activating, mouse-transparent): pure scenery.
+/// A borderless, transparent, always-on-top panel that follows the user across
+/// Spaces and stays visible over full-screen apps.
 final class OverlayPanel: NSPanel {
     init(contentView: NSView) {
         // A *titled* window with invisible chrome, not a borderless one: the
@@ -16,7 +13,7 @@ final class OverlayPanel: NSPanel {
         // while resizing exactly like every other app's window.
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 150),
-            styleMask: [.titled, .fullSizeContentView, .resizable],
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -27,6 +24,8 @@ final class OverlayPanel: NSPanel {
         standardWindowButton(.miniaturizeButton)?.isHidden = true
         standardWindowButton(.zoomButton)?.isHidden = true
 
+        isFloatingPanel = true
+        level = .screenSaver // above normal windows
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -35,7 +34,7 @@ final class OverlayPanel: NSPanel {
         // handle instead (WindowDragSurface), like a title bar.
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
-        applyProfile(passive: false)
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
         // Freeform resize (drag any edge). There is no maximum — the screen is
         // the practical bound and making the card huge is the user's call. The
@@ -65,36 +64,41 @@ final class OverlayPanel: NSPanel {
         // Re-clamp onto a visible screen if the display setup changes.
         center.addObserver(self, selector: #selector(screensChanged),
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
+
+        // Cursor display through the native drag itself. The titled frame's
+        // drag machinery runs fine while the app is inactive, but its cursor
+        // display does not (cursorUpdate delivery is gated on activation),
+        // and hover events die the moment the frame starts eating the drag —
+        // so without this, a resize grabbed from outside the hover band runs
+        // with a plain arrow. Set the grabbed edge's cursor at drag start and
+        // re-assert it on every resize tick so nothing can wipe it mid-drag.
+        center.addObserver(self, selector: #selector(liveResizeBegan),
+                           name: NSWindow.willStartLiveResizeNotification, object: self)
+        center.addObserver(self, selector: #selector(liveResizeTicked),
+                           name: NSWindow.didResizeNotification, object: self)
+        center.addObserver(self, selector: #selector(liveResizeEnded),
+                           name: NSWindow.didEndLiveResizeNotification, object: self)
     }
 
-    // MARK: - Interactive vs. click-through profile
+    // MARK: - Resize cursor during the native edge drag
 
-    /// Interactive (default): an ordinary, activatable window at .floating
-    /// level — the FaceTime model: stays above normal windows but is still a
-    /// real, focusable, natively-resizable window. Activatability is what
-    /// makes resizing fully native (AppKit's cursor display and the system's
-    /// resize affordances). Accepted costs: activates on click and appears
-    /// in ⌘Tab/Mission Control.
-    ///
-    /// Passive (click-through): the classic overlay — floats over everything
-    /// including full-screen apps, never activates, and the window server
-    /// routes every mouse event to whatever is underneath. No resizing, no
-    /// cursors, no focus: scenery.
-    private(set) var isPassive = false
+    private var liveResizeCursor: NSCursor?
 
-    func applyProfile(passive: Bool) {
-        isPassive = passive
-        ignoresMouseEvents = passive
-        isFloatingPanel = passive
-        level = passive ? .screenSaver : .floating
-        collectionBehavior = passive
-            ? [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            : []
-        if passive {
-            styleMask.insert(.nonactivatingPanel)
-        } else {
-            styleMask.remove(.nonactivatingPanel)
-        }
+    @objc private func liveResizeBegan() {
+        liveResizeCursor = ResizeCursors.cursor(nearFrame: frame, screenPoint: NSEvent.mouseLocation)
+        liveResizeCursor?.set()
+    }
+
+    @objc private func liveResizeTicked() {
+        liveResizeCursor?.set()
+    }
+
+    @objc private func liveResizeEnded() {
+        guard liveResizeCursor != nil else { return }
+        liveResizeCursor = nil
+        // Hand back to the hover pipeline: keep the arrows if the pointer
+        // ended on an edge, plain arrow otherwise.
+        (ResizeCursors.cursor(nearFrame: frame, screenPoint: NSEvent.mouseLocation) ?? .arrow).set()
     }
 
     // Move/resize notifications fire per frame during a drag; writing
@@ -151,10 +155,8 @@ final class OverlayPanel: NSPanel {
         setFrame(sanitized(grown), display: true, animate: true)
     }
 
-    // Key capability is what unlocks AppKit's cursorUpdate machinery (the
-    // native resize arrows). Passive mode takes no events at all, so it opts
-    // back out and can never steal focus.
-    override var canBecomeKey: Bool { !isPassive }
+    // Never steal focus from the app the user is actually working in.
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
     /// Back to the default size and bottom-center position (Preferences reset).
