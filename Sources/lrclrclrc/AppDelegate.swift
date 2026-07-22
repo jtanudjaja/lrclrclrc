@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resizer.autoresizingMask = [.width, .height]
         container.addSubview(resizer, positioned: .above, relativeTo: hosting)
 
+        setupMainMenu()
         setupStatusItem()
         controller.start()
         restoreState()
@@ -72,6 +73,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let kind = controller.currentSource
         for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
         updateOffsetTitle()
+    }
+
+    /// An accessory app has no application menu, so the standard editing key
+    /// equivalents (⌘X/C/V/A/Z) aren't routed to the first responder — which
+    /// breaks pasting into the Find Lyrics text box. A minimal main menu with
+    /// an Edit submenu restores them (the bar itself stays hidden).
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit lrclrclrc",
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: Selector(("cut:")), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: Selector(("copy:")), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: Selector(("paste:")), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a")
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func setupStatusItem() {
