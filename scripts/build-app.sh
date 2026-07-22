@@ -21,7 +21,7 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-echo "▸ assembling $APP…"
+echo "▸ assembling ${APP}…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/lrclrclrc"

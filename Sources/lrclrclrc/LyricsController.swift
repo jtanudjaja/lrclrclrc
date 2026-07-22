@@ -85,8 +85,8 @@ final class LyricsController: ObservableObject {
             let result = await LyricsService.fetch(
                 title: title, artist: artist, album: album, duration: duration
             )
+            guard let self else { return }
             await MainActor.run {
-                guard let self else { return }
                 let res = result ?? LyricsResult(synced: false, lines: [])
                 self.cache[id] = res
                 if id == self.lastTrackId { self.apply(res) }
