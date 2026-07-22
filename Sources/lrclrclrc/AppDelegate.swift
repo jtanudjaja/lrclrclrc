@@ -463,4 +463,20 @@ extension AppDelegate: PreferencesActions {
         }
         updateLaunchAtLoginState()
     }
+
+    /// Every setting back to its default. Per-song data (sync offsets, manual
+    /// lyrics, cached lyrics) is deliberately kept — that's content, not
+    /// configuration.
+    func resetToDefaults() {
+        appearance.fontScale = 1.0
+        appearance.backgroundOpacity = 0.08
+        appearance.accent = .blue
+        appearance.alwaysShowControls = false
+        setClickThrough(false)
+        if isLaunchAtLoginOn { chooseLaunchAtLogin(false) }
+        chooseSource(.auto)
+        setDisplayMode(.overlay)
+        panel?.resetFrame()
+        refreshFloor(growNow: true)
+    }
 }

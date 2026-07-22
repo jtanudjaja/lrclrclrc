@@ -117,6 +117,15 @@ final class OverlayPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// Back to the default size and bottom-center position (Preferences reset).
+    /// The floor still applies — refreshFloor grows it right after if needed.
+    func resetFrame() {
+        var f = frame
+        f.size = NSSize(width: max(620, minSize.width), height: max(240, minSize.height))
+        setFrame(f, display: true)
+        positionBottomCenter()
+    }
+
     func positionBottomCenter() {
         guard let screen = NSScreen.main else { return }
         let visible = screen.visibleFrame

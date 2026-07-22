@@ -11,6 +11,9 @@ protocol PreferencesActions: AnyObject {
     func chooseDisplayMode(_ mode: DisplayMode)
     func chooseClickThrough(_ on: Bool)
     func chooseLaunchAtLogin(_ on: Bool)
+    /// Restore every setting to its default (keeps per-song data: offsets,
+    /// manual lyrics, caches).
+    func resetToDefaults()
 }
 
 struct PreferencesView: View {
@@ -21,6 +24,7 @@ struct PreferencesView: View {
     @State private var display: DisplayMode
     @State private var clickThrough: Bool
     @State private var launchAtLogin: Bool
+    @State private var confirmingReset = false
 
     init(appearance: Appearance, actions: PreferencesActions) {
         self.appearance = appearance
@@ -71,6 +75,28 @@ struct PreferencesView: View {
                     .onChange(of: launchAtLogin) { actions.chooseLaunchAtLogin($0) }
                 Toggle("Click-through (ignore mouse)", isOn: $clickThrough)
                     .onChange(of: clickThrough) { actions.chooseClickThrough($0) }
+            }
+
+            Section {
+                Button("Reset to Defaults…", role: .destructive) {
+                    confirmingReset = true
+                }
+                .confirmationDialog(
+                    "Reset all settings to their defaults?",
+                    isPresented: $confirmingReset
+                ) {
+                    Button("Reset", role: .destructive) {
+                        actions.resetToDefaults()
+                        // Re-read the states this window mirrors locally.
+                        source = actions.currentSource
+                        display = actions.currentDisplayMode
+                        clickThrough = actions.isClickThroughOn
+                        launchAtLogin = actions.isLaunchAtLoginOn
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Appearance, behavior, source, display mode, and the overlay's position and size return to their defaults. Per-song data — sync offsets and manual lyrics — is kept.")
+                }
             }
         }
         .formStyle(.grouped)
