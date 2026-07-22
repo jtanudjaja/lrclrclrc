@@ -30,12 +30,15 @@ Three moving parts, matching the three hard problems of a lyrics overlay:
 ## Build & run
 
 You need **Xcode Command Line Tools** (`xcode-select --install`) — full Xcode is
-optional. Then:
+optional. Then just:
 
 ```bash
-bash scripts/build-app.sh      # compiles + assembles lrclrclrc.app
-open lrclrclrc.app
+make run       # build and launch (build + relaunch each time)
 ```
+
+Other targets: `make build` (compile only), `make dmg` (package a `.dmg`),
+`make debug`, `make clean`. Or call the scripts directly:
+`bash scripts/build-app.sh && open lrclrclrc.app`.
 
 Because the app is **built locally**, it carries no download quarantine, so
 macOS runs it straight away — no Gatekeeper "unidentified developer" / malware
