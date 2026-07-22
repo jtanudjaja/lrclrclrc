@@ -48,6 +48,11 @@ struct OverlayView: View {
         GeometryReader { geo in
             card(size: geo.size)
         }
+        // The window is titled (for native resize) with the title bar hidden;
+        // NSHostingView still reports that invisible bar as a top safe-area
+        // inset, which pushed the whole card down ~28pt inside the window.
+        // The card owns the full frame — there is no chrome to avoid.
+        .ignoresSafeArea()
     }
 
     // MARK: - Card frame (the three zones)
