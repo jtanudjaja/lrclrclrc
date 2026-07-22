@@ -80,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if panel.isVisible {
             panel.orderOut(nil)
         } else {
+            // Overlay and menu-bar lyrics are mutually exclusive.
+            if showMenuBarLyrics { setMenuBarLyrics(false, showOverlay: false) }
             panel.orderFrontRegardless()
         }
     }
@@ -96,10 +98,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu-bar lyrics
 
     @objc private func toggleMenuBarLyrics() {
-        showMenuBarLyrics.toggle()
-        menuBarLyricsItem?.state = showMenuBarLyrics ? .on : .off
+        setMenuBarLyrics(!showMenuBarLyrics, showOverlay: true)
+    }
 
-        if showMenuBarLyrics {
+    /// Menu-bar lyrics and the floating overlay are mutually exclusive display
+    /// modes. Turning the menu-bar mode on hides the overlay; turning it off
+    /// restores the overlay (unless the caller is itself showing the overlay).
+    private func setMenuBarLyrics(_ on: Bool, showOverlay: Bool) {
+        showMenuBarLyrics = on
+        menuBarLyricsItem?.state = on ? .on : .off
+
+        if on {
+            panel?.orderOut(nil)
             lyricsCancellable = controller.$currentLine
                 .receive(on: RunLoop.main)
                 .sink { [weak self] line in self?.updateMenuBarText(line) }
@@ -107,8 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             lyricsCancellable?.cancel()
             lyricsCancellable = nil
-            statusItem?.button?.title = ""
+            statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.image = statusIcon
+            if showOverlay { panel?.orderFrontRegardless() }
         }
     }
 
@@ -117,13 +128,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             button.image = statusIcon
-            button.title = ""
+            button.attributedTitle = NSAttributedString(string: "")
         } else {
             button.image = nil
-            let maxLength = 45
-            button.title = trimmed.count > maxLength
+            // A smaller font fits noticeably more text in the same menu-bar
+            // width before macOS truncates it. Raise the cap to match.
+            let maxLength = 72
+            let shown = trimmed.count > maxLength
                 ? String(trimmed.prefix(maxLength - 1)) + "…"
                 : trimmed
+            button.attributedTitle = NSAttributedString(
+                string: shown,
+                attributes: [.font: NSFont.systemFont(ofSize: 12)]
+            )
         }
     }
 
