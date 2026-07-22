@@ -20,6 +20,7 @@
   "build": {
     "appId": "net.lrclrclrc.overlay",
     "productName": "lrclrclrc",
+    "publish": null,
     "files": [
       "src/**/*",
       "renderer/**/*",
