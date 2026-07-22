@@ -68,9 +68,17 @@ struct OverlayView: View {
                         .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
                         .fill(.ultraThinMaterial)
-                        .opacity(hovered ? 0.55 : 0) // frosted glass on hover
+                        .opacity(hovered ? 0.5 : 0) // frosted glass on hover
+                    // Soft top-edge sheen on hover — no flat outline.
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(.white.opacity(hovered ? 0.14 : 0.05), lineWidth: 1)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.12), .white.opacity(0.0)],
+                                startPoint: .top, endPoint: .center
+                            ),
+                            lineWidth: 1
+                        )
+                        .opacity(hovered ? 1 : 0)
                 }
                 .environment(\.colorScheme, .dark)
                 .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22 * scale, y: 9 * scale)
