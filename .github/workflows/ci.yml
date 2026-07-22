@@ -29,3 +29,11 @@ jobs:
           test -f lrclrclrc.app/Contents/Info.plist
           codesign --verify --verbose lrclrclrc.app
           echo "app bundle OK"
+      - name: Package DMG
+        run: bash scripts/make-dmg.sh
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: lrclrclrc-dmg
+          path: lrclrclrc.dmg
+          if-no-files-found: error

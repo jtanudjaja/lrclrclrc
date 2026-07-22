@@ -62,15 +62,16 @@ Info.plist and entitlements the automation permission needs.)
 
 ## Publish a release
 
-`.github/workflows/release.yml` builds the app, zips it, and attaches it to a
-GitHub Release. Cut one by pushing a tag:
+`.github/workflows/release.yml` builds the app, packages a `.dmg`, and attaches
+it to a GitHub Release. Cut one by pushing a tag:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The zip appears under the repo's **Releases**.
+The DMG appears under the repo's **Releases**. (You can also build a DMG
+locally: `bash scripts/build-app.sh && bash scripts/make-dmg.sh`.)
 
 > Downloaded builds are **unsigned** (no Apple Developer ID), so whoever installs
 > one must clear the quarantine once:
@@ -83,7 +84,8 @@ The zip appears under the repo's **Releases**.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push/PR to `main`: it builds the
-package on macOS, assembles the `.app`, and verifies the code signature.
+package on macOS, assembles the `.app`, verifies the code signature, and
+uploads a `.dmg` as a build artifact (downloadable from the Actions run).
 
 ## Project layout
 

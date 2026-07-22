@@ -25,8 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build & assemble app
         run: bash scripts/build-app.sh release
-      - name: Zip app bundle
-        run: ditto -c -k --keepParent lrclrclrc.app lrclrclrc-macos.zip
+      - name: Package DMG
+        run: bash scripts/make-dmg.sh
       - name: Resolve tag
         id: tag
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
@@ -34,13 +34,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.tag.outputs.tag }}" lrclrclrc-macos.zip \
+          gh release create "${{ steps.tag.outputs.tag }}" lrclrclrc.dmg \
             --title "lrclrclrc ${{ steps.tag.outputs.tag }}" \
             --notes "$(cat <<'NOTES'
           Native SwiftUI menu-bar app. Unsigned (no Apple Developer ID).
 
           To install:
-          1. Unzip and move **lrclrclrc.app** to Applications.
+          1. Open the DMG and drag **lrclrclrc** to Applications.
           2. Clear the download quarantine before opening it:
              ```
              xattr -cr /Applications/lrclrclrc.app
