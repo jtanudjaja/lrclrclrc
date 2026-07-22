@@ -12,39 +12,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Lint & syntax check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Static checks
-        run: npm run check
-
-  build-mac:
-    name: Build macOS DMG
-    needs: check
+  build:
+    name: Build (macOS)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Build universal DMG
-        run: npm run dist
-        env:
-          # No Apple Developer cert in CI: produce an ad-hoc-signed build
-          # instead of failing while searching for an identity.
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-      - name: Upload DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: lrclrclrc-macos-dmg
-          path: dist/*.dmg
-          if-no-files-found: error
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build -c release
+      - name: Assemble & sign app bundle
+        run: bash scripts/build-app.sh release
+      - name: Verify bundle
+        run: |
+          test -x lrclrclrc.app/Contents/MacOS/lrclrclrc
+          test -f lrclrclrc.app/Contents/Info.plist
+          codesign --verify --verbose lrclrclrc.app
+          echo "app bundle OK"

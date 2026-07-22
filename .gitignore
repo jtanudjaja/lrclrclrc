@@ -1,32 +1,22 @@
-# Dependencies
-node_modules/
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
 
-# Build output (electron-builder writes here; build/ holds signed resources and is tracked)
-dist/
-out/
-*.dmg
-*.zip
+# Built app bundle / archives
 *.app
+*.zip
+*.dmg
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Local env / secrets (none needed, but keep them out just in case)
-.env
-.env.*
-*.local
+# Xcode
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 
 # OS junk
 .DS_Store
-Thumbs.db
 
 # Editor
 .vscode/
 .idea/
 *.swp
-
-# Local lyric cache (optional, generated at runtime)
-.cache/
