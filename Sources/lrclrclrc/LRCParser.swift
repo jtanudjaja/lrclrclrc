@@ -1,7 +1,8 @@
 import Foundation
 
 /// One lyric line. `time == nil` means unsynced (plain lyrics).
-struct LrcLine {
+/// Codable so fetched lyrics can persist in the on-disk cache.
+struct LrcLine: Codable {
     let time: Double?
     let text: String
 }

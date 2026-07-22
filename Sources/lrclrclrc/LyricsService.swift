@@ -1,6 +1,6 @@
 import Foundation
 
-struct LyricsResult {
+struct LyricsResult: Codable {
     let synced: Bool
     let lines: [LrcLine]
 }

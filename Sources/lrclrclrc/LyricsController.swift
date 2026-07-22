@@ -43,6 +43,7 @@ final class LyricsController: ObservableObject {
     private let overrides = OverrideStore()
     private let offsets = OffsetStore()
     private let cache = LRUCache<LyricsResult>(capacity: 200)
+    private let diskCache = DiskLyricsCache()
 
     private struct TrackMeta {
         let title: String
@@ -225,6 +226,14 @@ final class LyricsController: ObservableObject {
             return
         }
 
+        // Disk cache: survives relaunch/rebuild, so repeat plays are instant
+        // and LRCLIB outages don't blank previously-heard songs.
+        if let stored = diskCache.load(key) {
+            cache.set(stored, for: key)
+            apply(stored)
+            return
+        }
+
         status = "looking up lyrics…"
         stagePhase = .searching
         clearLines()
@@ -252,6 +261,7 @@ final class LyricsController: ObservableObject {
         case .found(let res):
             retryAttempt = 0
             cache.set(res, for: key)
+            diskCache.save(res, for: key)
             apply(res)
         case .notFound:
             retryAttempt = 0
@@ -496,6 +506,7 @@ final class LyricsController: ObservableObject {
         guard !key.isEmpty else { return }
         overrides.set(text, for: key)
         cache.removeValue(forKey: key)
+        diskCache.remove(key)
         applyRaw(text)
     }
 
@@ -505,6 +516,7 @@ final class LyricsController: ObservableObject {
         guard !key.isEmpty else { return }
         overrides.remove(for: key)
         cache.removeValue(forKey: key)
+        diskCache.remove(key)
         lastTrackId = "" // force the next poll to reload
     }
 
