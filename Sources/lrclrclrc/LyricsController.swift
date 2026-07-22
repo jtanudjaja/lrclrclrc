@@ -13,6 +13,7 @@ final class LyricsController: ObservableObject {
     @Published var status = ""
 
     private let watcher = MusicWatcher()
+    private let overrides = OverrideStore()
 
     private var lines: [LrcLine] = []
     private var synced = false
@@ -70,6 +71,12 @@ final class LyricsController: ObservableObject {
         artist = np.artist
         currentIndex = -1
 
+        // A manual override wins over anything from the network.
+        if let manual = overrides.lyrics(for: np.trackId) {
+            applyRaw(manual)
+            return
+        }
+
         if let cached = cache[np.trackId] {
             apply(cached)
             return
@@ -117,6 +124,47 @@ final class LyricsController: ObservableObject {
             prevLine = ""
             currentLine = lines[0].text
             nextLine = lines.count > 1 ? lines[1].text : ""
+        }
+    }
+
+    // MARK: - Manual override
+
+    /// True when a song is playing (so an override can be keyed to it).
+    var hasCurrentTrack: Bool { !lastTrackId.isEmpty }
+
+    /// Apply and persist user-pasted lyrics for the current track.
+    func applyManualLyrics(_ text: String) {
+        let trackId = lastTrackId
+        guard !trackId.isEmpty else { return }
+        overrides.set(text, for: trackId)
+        cache.removeValue(forKey: trackId)
+        applyRaw(text)
+    }
+
+    /// Drop the manual override for the current track and re-fetch normally.
+    func clearManualLyrics() {
+        let trackId = lastTrackId
+        guard !trackId.isEmpty else { return }
+        overrides.remove(for: trackId)
+        cache.removeValue(forKey: trackId)
+        lastTrackId = "" // force the next poll to reload from the network
+    }
+
+    /// Parse pasted text (timed `.lrc` if it has timestamps, else plain) and show it.
+    private func applyRaw(_ text: String) {
+        let parsed = LRCParser.parse(text)
+        let result: LyricsResult
+        if !parsed.isEmpty {
+            result = LyricsResult(synced: true, lines: parsed)
+        } else {
+            let plain = text
+                .components(separatedBy: .newlines)
+                .map { LrcLine(time: nil, text: $0.trimmingCharacters(in: .whitespaces)) }
+            result = LyricsResult(synced: false, lines: plain)
+        }
+        apply(result)
+        if !result.lines.isEmpty {
+            status = synced ? "manual · synced" : "manual"
         }
     }
 

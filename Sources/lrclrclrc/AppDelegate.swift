@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clickThrough = false
     private var clickThroughItem: NSMenuItem?
 
+    private var findLyricsWindow: NSWindow?
+
     private var showMenuBarLyrics = false
     private var menuBarLyricsItem: NSMenuItem?
     private var lyricsCancellable: AnyCancellable?
@@ -55,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(makeItem("Show / Hide Overlay", #selector(toggleOverlay), "h"))
+        menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(.separator())
         menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
         menu.addItem(makeItem("Smaller", #selector(shrink), "-"))
@@ -101,6 +104,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func enlarge() { panel?.scaleBy(1.15) }
     @objc private func shrink() { panel?.scaleBy(0.87) }
+
+    @objc private func openFindLyrics() {
+        if let window = findLyricsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hosting = NSHostingController(rootView: FindLyricsView(controller: controller))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Find Lyrics"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        findLyricsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     // MARK: - Menu-bar lyrics
 

@@ -51,11 +51,16 @@ Privacy & Security → Automation).
 The app has **no Dock icon** — it lives in the menu bar (the ♫ icon). From there
 you can show/hide the overlay, toggle click-through, and quit.
 
-### Controls
+### Controls (menu-bar ♫ icon)
 
-- **Drag** the card anywhere to reposition it.
-- **Click-Through** (menu bar) makes the overlay ignore the mouse so clicks land
-  on the app behind it.
+- **Show / Hide Overlay** — toggle the floating card. **Drag** the card to move
+  it; drag its edges/corners to resize (the lyrics scale with it).
+- **Find Lyrics…** — when a song has no lyrics, open lrclib.net to look it up,
+  then paste the `.lrc` (timed) or plain text; it's remembered for that track.
+- **Larger / Smaller** — step the overlay size.
+- **Click-Through** — the overlay ignores the mouse so clicks land behind it.
+- **Show Lyrics in Menu Bar** — show the current line in the menu bar instead of
+  the overlay (long lines scroll). Mutually exclusive with the overlay.
 
 ### Open in Xcode instead
 
