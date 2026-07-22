@@ -23,9 +23,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingView(rootView: OverlayView(controller: controller))
         hosting.autoresizingMask = [.width, .height]
 
-        let panel = OverlayPanel(contentView: hosting)
-        panel.orderFrontRegardless()
+        // Container: SwiftUI card at the bottom, resize overlay on top.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 150))
+        hosting.frame = container.bounds
+        container.addSubview(hosting)
+
+        let panel = OverlayPanel(contentView: container)
         self.panel = panel
+
+        let resizer = EdgeResizeView(window: panel)
+        resizer.frame = container.bounds
+        resizer.autoresizingMask = [.width, .height]
+        container.addSubview(resizer, positioned: .above, relativeTo: hosting)
+
+        panel.orderFrontRegardless()
 
         setupStatusItem()
         controller.start()

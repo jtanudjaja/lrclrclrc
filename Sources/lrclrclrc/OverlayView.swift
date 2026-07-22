@@ -77,9 +77,20 @@ struct OverlayView: View {
             .shadow(color: .black.opacity(0.45), radius: 4 * scale)
             .background(
                 RoundedRectangle(cornerRadius: 16 * scale, style: .continuous)
-                    .fill(Color.black.opacity(hovered ? 0.5 : 0.12))
+                    .fill(Color.black.opacity(hovered ? 0.5 : 0.08))
             )
             .clipShape(RoundedRectangle(cornerRadius: 16 * scale, style: .continuous))
+            // Resize grip cue, bottom-right, revealed on hover (the actual
+            // resizing is handled by EdgeResizeView beneath, hence no hit test).
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 9 * scale, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .padding(5 * scale)
+                    .opacity(hovered ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
             .animation(.easeInOut(duration: 0.22), value: hovered)
             .onHover { hovered = $0 }
         }
