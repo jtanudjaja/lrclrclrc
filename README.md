@@ -60,6 +60,10 @@ you can show/hide the overlay, toggle click-through, and quit.
   **⏮ ⏯ ⏭ playback controls** (when the window is big enough).
 - **Source** — which player to follow: **Auto** (whichever is playing), **Apple
   Music**, or **Spotify**.
+- **Full Lyrics…** (⌘F) — the whole song, scrollable, current line highlighted;
+  click any timed line to **seek** playback there.
+- **Preferences…** (⌘,) — one window for text size, background opacity, accent
+  color, always-show-controls, source, display, launch-at-login, click-through.
 - **Find Lyrics…** — when a song has no lyrics, open lrclib.net to look it up,
   then paste the `.lrc` (timed) or plain text; it's remembered for that track.
 - **Larger / Smaller** — step the overlay size.

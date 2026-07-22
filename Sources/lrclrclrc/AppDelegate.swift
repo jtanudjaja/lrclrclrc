@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var findLyricsWindow: NSWindow?
     private var fullLyricsWindow: NSWindow?
     private var preferencesWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private let appearance = Appearance()
 
     private var displayMode: DisplayMode = .overlay
@@ -65,6 +66,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         offsetCancellable = controller.$offset
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateOffsetTitle() }
+
+        if !Settings.hasOnboarded { showOnboarding() }
+    }
+
+    private func showOnboarding() {
+        Settings.hasOnboarded = true // show exactly once
+        let view = OnboardingView(controller: controller) { [weak self] in
+            self?.onboardingWindow?.close()
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = "Welcome"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        onboardingWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Reapply persisted state on launch (the panel restores its own frame).

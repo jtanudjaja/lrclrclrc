@@ -27,6 +27,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/lrclrclrc"
 cp bundling/Info.plist "$APP/Contents/Info.plist"
 
+# App icon (best-effort — never fail the build over it).
+if [[ ! -f bundling/icon.icns ]]; then
+  swift scripts/make-icon.swift bundling/icon.icns || echo "  (icon generation skipped)"
+fi
+if [[ -f bundling/icon.icns ]]; then
+  cp bundling/icon.icns "$APP/Contents/Resources/icon.icns"
+fi
+
 echo "▸ ad-hoc signing…"
 if ! codesign --force --sign - \
       --entitlements bundling/lrclrclrc.entitlements \

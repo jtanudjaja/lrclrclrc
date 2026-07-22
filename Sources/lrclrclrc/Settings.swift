@@ -14,6 +14,12 @@ enum Settings {
         static let backgroundOpacity = "backgroundOpacity"
         static let accent = "accent"
         static let alwaysShowControls = "alwaysShowControls"
+        static let hasOnboarded = "hasOnboarded"
+    }
+
+    static var hasOnboarded: Bool {
+        get { defaults.bool(forKey: Key.hasOnboarded) }
+        set { defaults.set(newValue, forKey: Key.hasOnboarded) }
     }
 
     /// Overlay window frame (position + size), stored as a string.

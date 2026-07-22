@@ -8,6 +8,10 @@ Package.resolved
 *.zip
 *.dmg
 
+# Generated icon
+bundling/icon.icns
+*.iconset/
+
 # Xcode
 DerivedData/
 *.xcodeproj/xcuserdata/
