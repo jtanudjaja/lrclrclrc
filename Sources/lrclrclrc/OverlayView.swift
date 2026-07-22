@@ -337,7 +337,7 @@ struct OverlayView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .mask(edgeFade)
+        .mask(edgeFade(stageHeight: stage.height, fs: fs))
         .contentShape(Rectangle())
         .gesture(scrubGesture(step: step, lineCount: lines.count))
         .animation(scrubbing ? nil : motion, value: controller.currentLineIndex)
@@ -463,11 +463,18 @@ struct OverlayView: View {
             .background(Capsule().fill(appearance.accent.color.opacity(0.32)))
     }
 
-    private var edgeFade: LinearGradient {
-        LinearGradient(stops: [
+    /// Top/bottom dissolve for the lyric band. The fade span is line-height-
+    /// aware — always ≥ ~1.3 lyric lines — so an overflowing line melts away
+    /// gradually instead of ramping out inside a few points and reading as a
+    /// hard cutout. The mid-stop eases the ramp (no perceptible edge).
+    private func edgeFade(stageHeight: CGFloat, fs: CGFloat) -> LinearGradient {
+        let span = min(0.35, (OverlayMetrics.lineUnit * 1.3 * fs) / max(1, stageHeight))
+        return LinearGradient(stops: [
             .init(color: .clear, location: 0.0),
-            .init(color: .black, location: 0.12),
-            .init(color: .black, location: 0.88),
+            .init(color: .black.opacity(0.4), location: span * 0.55),
+            .init(color: .black, location: span),
+            .init(color: .black, location: 1.0 - span),
+            .init(color: .black.opacity(0.4), location: 1.0 - span * 0.55),
             .init(color: .clear, location: 1.0),
         ], startPoint: .top, endPoint: .bottom)
     }
