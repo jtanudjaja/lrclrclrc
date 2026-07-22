@@ -48,18 +48,35 @@ final class LyricsController: ObservableObject {
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var lyricsTask: Task<Void, Never>?
+    private var pollInFlight = false        // coalesce: skip if a read is running
+    private var isActive = false            // last poll found a playing/paused track
+    private var idleTickCounter = 0         // throttle polling while idle
 
     init() { active = music }
 
     func start() {
         poll()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.poll()
+            self?.timerPoll()
         }
         tickTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             self?.tick()
         }
         observePlayerNotifications()
+    }
+
+    /// While a track is active, poll every second; while idle, only every ~3s
+    /// (change notifications still wake it instantly when playback resumes).
+    private func timerPoll() {
+        if isActive {
+            poll()
+        } else {
+            idleTickCounter += 1
+            if idleTickCounter >= 3 {
+                idleTickCounter = 0
+                poll()
+            }
+        }
     }
 
     /// React instantly to track/state changes instead of waiting for the poll.
@@ -70,16 +87,25 @@ final class LyricsController: ObservableObject {
                 self?.poll()
             }
         }
+        // Re-anchor immediately when the Mac wakes from sleep.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.poll() }
     }
 
     // MARK: - Polling (read on background, process on main)
 
     private func poll() {
+        if pollInFlight { return } // coalesce overlapping requests
+        pollInFlight = true
         let preferred = sourceKind
         pollQueue.async { [weak self] in
             guard let self else { return }
             let (np, kind) = self.read(preferred: preferred)
-            DispatchQueue.main.async { self.process(np, kind: kind) }
+            DispatchQueue.main.async {
+                self.pollInFlight = false
+                self.process(np, kind: kind)
+            }
         }
     }
 
@@ -105,6 +131,8 @@ final class LyricsController: ObservableObject {
 
     private func process(_ np: NowPlaying, kind: PlayerSourceKind) {
         active = (kind == .spotify) ? spotify : music
+        isActive = (np.state == .ok)
+        if isActive { idleTickCounter = 0 }
 
         switch np.state {
         case .permissionDenied:

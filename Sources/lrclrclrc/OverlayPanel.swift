@@ -39,10 +39,17 @@ final class OverlayPanel: NSPanel {
                            name: NSWindow.didMoveNotification, object: self)
         center.addObserver(self, selector: #selector(persistFrame),
                            name: NSWindow.didResizeNotification, object: self)
+        // Re-clamp onto a visible screen if the display setup changes.
+        center.addObserver(self, selector: #selector(screensChanged),
+                           name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     @objc private func persistFrame() {
         Settings.overlayFrame = frame
+    }
+
+    @objc private func screensChanged() {
+        setFrame(sanitized(frame), display: true)
     }
 
     /// Clamp a restored frame to the size bounds and keep it on a screen.
