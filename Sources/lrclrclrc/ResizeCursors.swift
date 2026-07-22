@@ -36,7 +36,13 @@ enum ResizeCursors {
 
     /// Cursor for a point in SwiftUI-local (top-left origin) coordinates, or
     /// nil when the point isn't in the edge band.
-    static func cursor(at p: CGPoint, in size: CGSize, thickness t: CGFloat = 10) -> NSCursor? {
+    ///
+    /// The band is deliberately generous (18pt): the titled frame *steals*
+    /// mouse events in the outermost few points (that's how its native drag-
+    /// resize works), so hover events stop arriving there — the cursor we set
+    /// just before the steal zone is the one that persists through it. A thin
+    /// band left almost no reachable pixels, which read as "no cursor at all".
+    static func cursor(at p: CGPoint, in size: CGSize, thickness t: CGFloat = 18) -> NSCursor? {
         let left = p.x <= t
         let right = p.x >= size.width - t
         let top = p.y <= t          // visual top (SwiftUI y-down)
