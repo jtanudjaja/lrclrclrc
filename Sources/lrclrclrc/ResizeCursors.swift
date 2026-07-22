@@ -38,6 +38,27 @@ enum ResizeCursors {
         }
     }
 
+    /// Cursor for a mouse point in *screen* coordinates (y-up) against a
+    /// window frame — used during a native live resize, when hover events are
+    /// gone and only the grab point identifies the dragged edge. Tolerance is
+    /// per-edge distance; being within it on two perpendicular edges reads as
+    /// a corner grab.
+    static func cursor(nearFrame f: NSRect, screenPoint p: NSPoint,
+                       tolerance t: CGFloat = 16) -> NSCursor? {
+        let left = abs(p.x - f.minX) <= t
+        let right = abs(p.x - f.maxX) <= t
+        let top = abs(p.y - f.maxY) <= t     // visual top (screen y-up)
+        let bottom = abs(p.y - f.minY) <= t
+        switch ((left || right), (top || bottom)) {
+        case (true, true):
+            let nwse = (left && top) || (right && bottom)
+            return nwse ? diagonalNWSE : diagonalNESW
+        case (true, false): return horizontal
+        case (false, true): return vertical
+        default: return nil
+        }
+    }
+
     /// A double-headed diagonal arrow in the system style (white stroke over a
     /// dark outline so it reads on any background).
     private static func drawnDiagonal(nwse: Bool) -> NSCursor {
