@@ -18,15 +18,26 @@ struct OverlayView: View {
             let lineSize = 15 * fs
             let radius = 18 + 6 * (fs - 1)
 
-            let showHeader = geo.size.height >= 116
-            let showStatus = geo.size.height >= 150
-            let roomForControls = geo.size.height >= 104 && geo.size.width >= 240
+            // Chrome visibility keyed to window size only (never to hover), so
+            // resizing is the only thing that adds/removes it. Thresholds are
+            // fs-scaled and sized so each piece of chrome only appears once the
+            // window is genuinely tall enough to hold it *plus* a lyric line —
+            // otherwise the stack would overflow the card and clip the title.
+            let h = geo.size.height
+            let showHeader = h >= 92 * fs
+            let showStatus = h >= 148 * fs && !controller.status.isEmpty
+            let roomForControls = h >= 188 * fs && geo.size.width >= 240 * fs
             let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
 
-            let reserve = 30 * fs
-                + (showHeader ? 24 * fs : 0)
-                + (showStatus ? 18 * fs : 0)
-                + (controlsVisible ? 34 * fs : 0)
+            // Control space is *reserved whenever it could appear* — not when it
+            // is currently shown — so hovering fades the controls into already-
+            // reserved space instead of reflowing the lyric column. This is what
+            // keeps the title/credit from jumping around on hover.
+            let controlsH: CGFloat = roomForControls ? (controller.isSynced ? 52 * fs : 28 * fs) : 0
+            let reserve = 28 * fs
+                + (showHeader ? 22 * fs : 0)
+                + (showStatus ? 16 * fs : 0)
+                + controlsH
             let fitLines = max(1, Int((geo.size.height - reserve) / (lineSize * 1.7)))
             let context = max(0, min(9, (fitLines - 1) / 2))
 
@@ -43,8 +54,10 @@ struct OverlayView: View {
                         .foregroundStyle(.white.opacity(0.4))
                         .lineLimit(1)
                 }
-                if controlsVisible { transportRow(fs) }
-                if controlsVisible, controller.isSynced { timingRow(fs) }
+                if roomForControls {
+                    controlsBlock(fs: fs, visible: controlsVisible)
+                        .frame(height: controlsH)
+                }
             }
             .padding(.horizontal, 24 * fs)
             .padding(.vertical, 14 * fs)
@@ -74,17 +87,32 @@ struct OverlayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 let cur = max(0, current)
-                let start = max(0, cur - context)
-                let end = min(lines.count - 1, cur + context)
+                // Always render an equal number of slots above and below the
+                // current line. When the song hasn't got that many lines above
+                // (or below) yet, the slot is left blank — so the current line
+                // stays pinned to the vertical centre instead of drifting up at
+                // the start or down at the end.
                 VStack(spacing: 6 * fs) {
-                    ForEach(Array(start...end), id: \.self) { i in
-                        lineText(i, current: current, heroSize: heroSize, lineSize: lineSize, fs: fs)
+                    ForEach(-context...context, id: \.self) { off in
+                        let i = cur + off
+                        if i >= 0 && i < lines.count {
+                            lineText(i, current: current, heroSize: heroSize, lineSize: lineSize, fs: fs)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    // Click a timed line to jump playback there —
+                                    // same behaviour as the Full Lyrics window.
+                                    if let t = controller.allLines[i].time { controller.seek(to: t) }
+                                }
+                        } else {
+                            Color.clear.frame(height: lineSize * 1.2)
+                        }
                     }
                 }
                 .mask(edgeFade(context))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .animation(.easeInOut(duration: 0.32), value: current)
     }
 
@@ -121,23 +149,37 @@ struct OverlayView: View {
     // MARK: - Chrome
 
     private func header(_ fs: CGFloat) -> some View {
-        HStack(spacing: 6 * fs) {
-            Image(systemName: "music.note")
-                .font(.system(size: 8.5 * fs, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.45))
-            Text(controller.title)
-                .font(.system(size: 11 * fs, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-            if !controller.artist.isEmpty {
-                Text("·").foregroundStyle(.white.opacity(0.3))
-                Text(controller.artist)
-                    .font(.system(size: 11 * fs, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
+        // One concatenated line so a long title+artist truncates cleanly at the
+        // tail instead of overflowing past the card edge.
+        var text = Text(Image(systemName: "music.note"))
+            .font(.system(size: 8.5 * fs, weight: .semibold))
+            .foregroundColor(.white.opacity(0.45))
+        text = text + Text("  \(controller.title)")
+            .font(.system(size: 11 * fs, weight: .semibold))
+            .foregroundColor(.white.opacity(0.9))
+        if !controller.artist.isEmpty {
+            text = text + Text("   ·   \(controller.artist)")
+                .font(.system(size: 11 * fs, weight: .regular))
+                .foregroundColor(.white.opacity(0.55))
         }
-        .tracking(0.2 * fs)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
+        return text
+            .tracking(0.2 * fs)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Transport (+ timing when synced) inside a fixed-height slot. Only its
+    /// opacity changes on hover — the slot is always reserved, so nothing above
+    /// it moves.
+    private func controlsBlock(fs: CGFloat, visible: Bool) -> some View {
+        VStack(spacing: 4 * fs) {
+            transportRow(fs)
+            if controller.isSynced { timingRow(fs) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
     }
 
     private func transportRow(_ fs: CGFloat) -> some View {
