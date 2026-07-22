@@ -129,23 +129,33 @@ final class EdgeResizeView: NSView {
         return e
     }
 
-    override func resetCursorRects() {
-        let t = thickness
-        let w = bounds.width, h = bounds.height
-        guard w > 2 * t, h > 2 * t else { return }
+    // Cursor rects only activate for the *key* window, and this panel can never
+    // become key (it must not steal focus) — so the resize cursors are driven
+    // by an always-active tracking area instead.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil
+        ))
+    }
 
-        // Edges: ↔ / ↕ double arrows.
-        addCursorRect(NSRect(x: 0, y: t, width: t, height: h - 2 * t), cursor: Self.horizontal)
-        addCursorRect(NSRect(x: w - t, y: t, width: t, height: h - 2 * t), cursor: Self.horizontal)
-        addCursorRect(NSRect(x: t, y: 0, width: w - 2 * t, height: t), cursor: Self.vertical)
-        addCursorRect(NSRect(x: t, y: h - t, width: w - 2 * t, height: t), cursor: Self.vertical)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
+        updateTrackingAreas()
+    }
 
-        // Corners: true diagonal double arrows, like any resizable macOS
-        // window. (AppKit y is bottom-up: top-left rect is at y = h − t.)
-        addCursorRect(NSRect(x: 0, y: h - t, width: t, height: t), cursor: Self.diagonalNWSE)     // top-left ⤡
-        addCursorRect(NSRect(x: w - t, y: 0, width: t, height: t), cursor: Self.diagonalNWSE)     // bottom-right ⤡
-        addCursorRect(NSRect(x: w - t, y: h - t, width: t, height: t), cursor: Self.diagonalNESW) // top-right ⤢
-        addCursorRect(NSRect(x: 0, y: 0, width: t, height: t), cursor: Self.diagonalNESW)         // bottom-left ⤢
+    override func cursorUpdate(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        let e = edge(at: local)
+        if e.isEmpty {
+            super.cursorUpdate(with: event)
+        } else {
+            cursor(for: e).set()
+        }
     }
 
     override func mouseDown(with event: NSEvent) {

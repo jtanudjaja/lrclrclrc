@@ -57,7 +57,6 @@ struct OverlayView: View {
         .frame(width: size.width, height: size.height)
         .background { backgroundLayer(radius: radius) }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .overlay(alignment: .bottomTrailing) { grip(fs) }
         .opacity(controller.longIdle && !hovered ? 0.25 : 1)
         .animation(.easeInOut(duration: 0.28), value: hovered)
         .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
@@ -82,6 +81,8 @@ struct OverlayView: View {
         }
         .opacity(dimmed ? 0.55 : 1)
         .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
+        // The header is the card's drag handle — grab it to move the window.
+        .background(WindowDragSurface())
     }
 
     private func headerOneRow(fs: CGFloat) -> some View {
@@ -443,29 +444,27 @@ struct OverlayView: View {
             }
     }
 
-    // MARK: - Footer (one constant row, aligned to the lyric column)
+    // MARK: - Footer (one constant row: transport + timing as one centered group)
 
     private func footerRow(fs: CGFloat, cardWidth: CGFloat, visible: Bool) -> some View {
-        // Align controls to the same capped column as the lyrics so they never
-        // drift to far corners on wide cards.
-        let columnW = min(cardWidth - 48 * fs, 498 * fs)
-        return ZStack {
+        // One centered cluster — transport beside timing — so the two can never
+        // collide (~250pt×fs total, guaranteed by the floor width). The timing
+        // slot is always reserved (opacity only), so sync state shifts nothing.
+        HStack(spacing: 26 * fs) {
             HStack(spacing: 24 * fs) {
                 transportButton("backward.fill", fs: fs) { controller.previousTrack() }
                 transportButton(controller.isPlaying ? "pause.fill" : "play.fill", fs: fs) { controller.playPause() }
                 transportButton("forward.fill", fs: fs) { controller.nextTrack() }
             }
-            HStack {
-                Spacer()
-                timingCluster(fs)
-                    .opacity(controller.isSynced ? 1 : 0)
-                    .allowsHitTesting(controller.isSynced)
-            }
+            timingCluster(fs)
+                .opacity(controller.isSynced ? 1 : 0)
+                .allowsHitTesting(controller.isSynced && visible)
         }
-        .frame(width: columnW)
         .frame(maxWidth: .infinity)
         .opacity(visible ? 1 : 0)
         .allowsHitTesting(visible)
+        // The footer's non-interactive background also drags the window.
+        .background(WindowDragSurface())
     }
 
     private func timingCluster(_ fs: CGFloat) -> some View {
@@ -491,16 +490,6 @@ struct OverlayView: View {
     }
 
     // MARK: - Chrome
-
-    private func grip(_ fs: CGFloat) -> some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 8.5 * fs, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.45))
-            .shadow(color: .black.opacity(0.6), radius: 2)
-            .padding(6 * fs)
-            .opacity(hovered ? 1 : 0)
-            .allowsHitTesting(false)
-    }
 
     private func backgroundLayer(radius: CGFloat) -> some View {
         ZStack {

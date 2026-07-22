@@ -55,9 +55,10 @@ you can show/hide the overlay, toggle click-through, and quit.
 
 - **Show Lyrics In** — one picker for where lyrics appear: **Overlay** (the
   floating card), **Menu Bar** (the current line in the menu bar, ♫ icon hidden
-  for room), or **Hidden**. In Overlay mode, **drag** the card to move it, drag
-  its edges/corners to resize (lyrics scale with it), and hover it to reveal
-  **⏮ ⏯ ⏭ playback controls** (when the window is big enough).
+  for room), or **Hidden**. In Overlay mode, **drag the header** to move the
+  card (it's the title bar), drag its edges/corners to resize (a taller card
+  shows more lyric lines), **click or vertically scrub** the lyrics to seek,
+  and hover to reveal **⏮ ⏯ ⏭ playback controls**.
 - **Source** — which player to follow: **Auto** (whichever is playing), **Apple
   Music**, or **Spotify**.
 - **Full Lyrics…** (⌘F) — the whole song, scrollable, current line highlighted;

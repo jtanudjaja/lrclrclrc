@@ -16,7 +16,10 @@ final class OverlayPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        isMovableByWindowBackground = true // drag the card to reposition
+        // Whole-background dragging would claim mouse-downs before the lyric
+        // stage's scrub gesture could run — the header is the explicit drag
+        // handle instead (WindowDragSurface), like a title bar.
+        isMovableByWindowBackground = false
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
