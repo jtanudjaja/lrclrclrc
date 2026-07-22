@@ -586,9 +586,11 @@ struct OverlayView: View {
 
     private func backgroundLayer(radius: CGFloat) -> some View {
         // The Background-opacity knob drives the *idle* face only. Hover uses a
-        // fixed designed darkness: with Liquid Glass the glass carries the
-        // presence (thin scrim); the legacy material needs more help.
-        let hoverScrim = glassActive ? 0.14 : 0.30
+        // fixed designed darkness. The clear-glass variant is near-invisible on
+        // its own, so the scrim behind it does the heavy lifting for the hover
+        // face's presence — kept close to the legacy material's darkness rather
+        // than the thin veil it used to be (that read too transparent).
+        let hoverScrim = glassActive ? 0.28 : 0.30
         return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(.black.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))
