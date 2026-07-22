@@ -64,6 +64,41 @@ final class OverlayPanel: NSPanel {
         // Re-clamp onto a visible screen if the display setup changes.
         center.addObserver(self, selector: #selector(screensChanged),
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
+
+        // Cursor display through the native drag itself. The titled frame's
+        // drag machinery runs fine while the app is inactive, but its cursor
+        // display does not (cursorUpdate delivery is gated on activation),
+        // and hover events die the moment the frame starts eating the drag —
+        // so without this, a resize grabbed from outside the hover band runs
+        // with a plain arrow. Set the grabbed edge's cursor at drag start and
+        // re-assert it on every resize tick so nothing can wipe it mid-drag.
+        center.addObserver(self, selector: #selector(liveResizeBegan),
+                           name: NSWindow.willStartLiveResizeNotification, object: self)
+        center.addObserver(self, selector: #selector(liveResizeTicked),
+                           name: NSWindow.didResizeNotification, object: self)
+        center.addObserver(self, selector: #selector(liveResizeEnded),
+                           name: NSWindow.didEndLiveResizeNotification, object: self)
+    }
+
+    // MARK: - Resize cursor during the native edge drag
+
+    private var liveResizeCursor: NSCursor?
+
+    @objc private func liveResizeBegan() {
+        liveResizeCursor = ResizeCursors.cursor(nearFrame: frame, screenPoint: NSEvent.mouseLocation)
+        liveResizeCursor?.set()
+    }
+
+    @objc private func liveResizeTicked() {
+        liveResizeCursor?.set()
+    }
+
+    @objc private func liveResizeEnded() {
+        guard liveResizeCursor != nil else { return }
+        liveResizeCursor = nil
+        // Hand back to the hover pipeline: keep the arrows if the pointer
+        // ended on an edge, plain arrow otherwise.
+        (ResizeCursors.cursor(nearFrame: frame, screenPoint: NSEvent.mouseLocation) ?? .arrow).set()
     }
 
     // Move/resize notifications fire per frame during a drag; writing
