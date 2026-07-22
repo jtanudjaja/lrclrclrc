@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clickThroughItem: NSMenuItem?
 
     private var findLyricsWindow: NSWindow?
+    private var preferencesWindow: NSWindow?
+    private let appearance = Appearance()
 
     private var displayMode: DisplayMode = .overlay
     private var modeItems: [DisplayMode: NSMenuItem] = [:]
@@ -36,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let hosting = NSHostingView(rootView: OverlayView(controller: controller))
+        let hosting = NSHostingView(rootView: OverlayView(controller: controller, appearance: appearance))
         hosting.autoresizingMask = [.width, .height]
 
         // Container: SwiftUI card at the bottom, resize overlay on top.
@@ -85,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
+        let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
+        prefs.target = self
+        appMenu.addItem(prefs)
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit lrclrclrc",
                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
@@ -125,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(submenu("Source", sourceSubmenu))
 
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
+        menu.addItem(makeItem("Preferences…", #selector(openPreferences), ""))
         menu.addItem(.separator())
         menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
         menu.addItem(makeItem("Smaller", #selector(shrink), "-"))
@@ -232,8 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func selectSource(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let kind = PlayerSourceKind(rawValue: raw) else { return }
-        controller.setSource(kind)
-        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+        chooseSource(kind)
     }
 
     // MARK: - Timing
@@ -253,20 +259,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Launch at login
 
     @objc private func toggleLaunchAtLogin() {
-        do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            } else {
-                try SMAppService.mainApp.register()
-            }
-        } catch {
-            NSLog("lrclrclrc: launch-at-login toggle failed: \(error)")
-        }
-        updateLaunchAtLoginState()
+        chooseLaunchAtLogin(!isLaunchAtLoginOn)
     }
 
     private func updateLaunchAtLoginState() {
-        launchAtLoginItem?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        launchAtLoginItem?.state = isLaunchAtLoginOn ? .on : .off
+    }
+
+    // MARK: - Preferences
+
+    @objc private func openPreferences() {
+        if let window = preferencesWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let hosting = NSHostingController(rootView: PreferencesView(appearance: appearance, actions: self))
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "lrclrclrc Preferences"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        preferencesWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func openFindLyrics() {
@@ -325,5 +341,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+// MARK: - Preferences actions (shared by the menu and the Preferences window)
+
+extension AppDelegate: PreferencesActions {
+    var currentSource: PlayerSourceKind { controller.currentSource }
+    var currentDisplayMode: DisplayMode { displayMode }
+    var isClickThroughOn: Bool { clickThrough }
+    var isLaunchAtLoginOn: Bool { SMAppService.mainApp.status == .enabled }
+
+    func chooseSource(_ kind: PlayerSourceKind) {
+        controller.setSource(kind)
+        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+    }
+
+    func chooseDisplayMode(_ mode: DisplayMode) { setDisplayMode(mode) }
+
+    func chooseClickThrough(_ on: Bool) { setClickThrough(on) }
+
+    func chooseLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+        } catch {
+            NSLog("lrclrclrc: launch-at-login failed: \(error)")
+        }
+        updateLaunchAtLoginState()
     }
 }

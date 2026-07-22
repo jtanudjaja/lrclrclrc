@@ -10,6 +10,10 @@ enum Settings {
         static let clickThrough = "clickThrough"
         static let displayMode = "displayMode"
         static let source = "source"
+        static let fontScale = "fontScale"
+        static let backgroundOpacity = "backgroundOpacity"
+        static let accent = "accent"
+        static let alwaysShowControls = "alwaysShowControls"
     }
 
     /// Overlay window frame (position + size), stored as a string.
@@ -40,5 +44,27 @@ enum Settings {
     static var source: String {
         get { defaults.string(forKey: Key.source) ?? PlayerSourceKind.auto.rawValue }
         set { defaults.set(newValue, forKey: Key.source) }
+    }
+
+    // MARK: - Appearance
+
+    static var fontScale: Double {
+        get { let v = defaults.double(forKey: Key.fontScale); return v == 0 ? 1.0 : v }
+        set { defaults.set(newValue, forKey: Key.fontScale) }
+    }
+
+    static var backgroundOpacity: Double {
+        get { defaults.object(forKey: Key.backgroundOpacity) as? Double ?? 0.08 }
+        set { defaults.set(newValue, forKey: Key.backgroundOpacity) }
+    }
+
+    static var accent: String {
+        get { defaults.string(forKey: Key.accent) ?? AccentChoice.blue.rawValue }
+        set { defaults.set(newValue, forKey: Key.accent) }
+    }
+
+    static var alwaysShowControls: Bool {
+        get { defaults.bool(forKey: Key.alwaysShowControls) }
+        set { defaults.set(newValue, forKey: Key.alwaysShowControls) }
     }
 }

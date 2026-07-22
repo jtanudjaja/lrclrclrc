@@ -6,19 +6,20 @@ import SwiftUI
 /// keeps white text legible on any wallpaper via a dark contrast halo.
 struct OverlayView: View {
     @ObservedObject var controller: LyricsController
+    @ObservedObject var appearance: Appearance
     @State private var hovered = false
 
     private let baseWidth: CGFloat = 620
     private let baseHeight: CGFloat = 150
-    private let glow = Color(red: 0.60, green: 0.79, blue: 1.0)
 
     var body: some View {
         GeometryReader { geo in
-            let scale = max(0.5, min(4.0, min(geo.size.width / baseWidth,
-                                              geo.size.height / baseHeight)))
+            let geomScale = min(geo.size.width / baseWidth, geo.size.height / baseHeight)
+            let scale = max(0.4, min(5.0, geomScale * appearance.fontScale))
             let showContext = geo.size.height >= 118
             let showStatus = geo.size.height >= 138
             let roomForControls = geo.size.height >= 108 && geo.size.width >= 240
+            let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
             let radius = 20 * scale
 
             VStack(spacing: 5 * scale) {
@@ -45,12 +46,12 @@ struct OverlayView: View {
                         .lineLimit(1)
                 }
 
-                if hovered, roomForControls {
+                if controlsVisible {
                     transportRow(scale: scale)
                         .transition(.opacity)
                 }
 
-                if hovered, controller.isSynced, roomForControls {
+                if controlsVisible, controller.isSynced {
                     timingRow(scale: scale)
                         .transition(.opacity)
                 }
@@ -64,7 +65,7 @@ struct OverlayView: View {
             .background {
                 ZStack {
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .fill(.black.opacity(hovered ? 0.30 : 0.08))
+                        .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
                         .fill(.ultraThinMaterial)
                         .opacity(hovered ? 0.55 : 0) // frosted glass on hover
@@ -128,7 +129,7 @@ struct OverlayView: View {
             .lineLimit(2)
             .minimumScaleFactor(0.4)
             .multilineTextAlignment(.center)
-            .shadow(color: glow.opacity(0.35), radius: 11 * scale)
+            .shadow(color: appearance.accent.color.opacity(0.35), radius: 11 * scale)
             .contentTransition(.opacity)
             .padding(.vertical, 1 * scale)
     }
