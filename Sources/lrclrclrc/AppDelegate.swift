@@ -154,8 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(makeItem("Preferences…", #selector(openPreferences), ""))
         menu.addItem(.separator())
-        menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
-        menu.addItem(makeItem("Smaller", #selector(shrink), "-"))
+        menu.addItem(makeItem("Text Larger", #selector(enlarge), "+"))
+        menu.addItem(makeItem("Text Smaller", #selector(shrink), "-"))
 
         // Timing offset (fix lyrics that run early/late).
         let timingSubmenu = NSMenu()
@@ -237,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stopMenuBarLyrics()
             panel?.orderOut(nil)
         }
+        updateActivationPolicy()
     }
 
     // MARK: - Overlay controls
@@ -252,8 +253,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Settings.clickThrough = on
     }
 
-    @objc private func enlarge() { panel?.scaleBy(1.15) }
-    @objc private func shrink() { panel?.scaleBy(0.87) }
+    // Text Larger / Smaller drive the same fontScale as the Preferences slider.
+    @objc private func enlarge() { appearance.fontScale = min(2.0, appearance.fontScale + 0.1) }
+    @objc private func shrink() { appearance.fontScale = max(0.7, appearance.fontScale - 0.1) }
 
     // MARK: - Source
 
@@ -334,9 +336,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Regular (Dock icon + ⌘Tab) while the overlay or any window is visible;
+    /// menu-bar accessory otherwise.
     private func updateActivationPolicy() {
-        let anyVisible = utilityWindows.contains { $0.isVisible }
-        NSApp.setActivationPolicy(anyVisible ? .regular : .accessory)
+        let overlayVisible = panel?.isVisible ?? false
+        let anyWindow = utilityWindows.contains { $0.isVisible }
+        NSApp.setActivationPolicy((overlayVisible || anyWindow) ? .regular : .accessory)
     }
 
     @objc private func openFindLyrics() {

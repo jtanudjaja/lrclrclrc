@@ -1,191 +1,219 @@
 import SwiftUI
 
-/// The lyric card. Design goals: near-invisible when idle, frosted glass on
-/// hover; the current line is the luminous hero with dimmed context above and
-/// below; lines cross-fade as the song advances. Scales to any size/aspect and
-/// keeps white text legible on any wallpaper via a dark contrast halo.
+/// The lyric card.
+///
+/// Sizing model: **font size** comes only from `appearance.fontScale` (the Text
+/// Size knob / Larger-Smaller), independent of the window. The **window size**
+/// decides how many lyric lines are shown — a taller card fills with more
+/// context lines, fading softly at the top and bottom like a teleprompter.
 struct OverlayView: View {
     @ObservedObject var controller: LyricsController
     @ObservedObject var appearance: Appearance
     @State private var hovered = false
 
-    private let baseWidth: CGFloat = 620
-    private let baseHeight: CGFloat = 150
-
     var body: some View {
         GeometryReader { geo in
-            let geomScale = min(geo.size.width / baseWidth, geo.size.height / baseHeight)
-            let scale = max(0.4, min(5.0, geomScale * appearance.fontScale))
-            let showContext = geo.size.height >= 118
-            let showStatus = geo.size.height >= 138
-            let roomForControls = geo.size.height >= 108 && geo.size.width >= 240
+            let fs = CGFloat(appearance.fontScale)
+            let heroSize = 22 * fs
+            let lineSize = 15 * fs
+            let radius = 18 + 6 * (fs - 1)
+
+            let showHeader = geo.size.height >= 116
+            let showStatus = geo.size.height >= 150
+            let roomForControls = geo.size.height >= 104 && geo.size.width >= 240
             let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
-            let radius = 20 * scale
 
-            VStack(spacing: 5 * scale) {
-                if controller.permissionNeeded {
-                    permissionButton(scale: scale)
-                }
+            let reserve = 30 * fs
+                + (showHeader ? 24 * fs : 0)
+                + (showStatus ? 18 * fs : 0)
+                + (controlsVisible ? 34 * fs : 0)
+            let fitLines = max(1, Int((geo.size.height - reserve) / (lineSize * 1.7)))
+            let context = max(0, min(9, (fitLines - 1) / 2))
 
-                if showContext {
-                    header(scale: scale)
-                    contextLine(controller.prevLine, scale: scale)
-                }
+            VStack(spacing: 5 * fs) {
+                if controller.permissionNeeded { permissionButton(fs) }
+                if showHeader { header(fs) }
 
-                heroLine(scale: scale)
-
-                if showContext {
-                    contextLine(controller.nextLine, scale: scale)
-                }
+                lyricColumn(fs: fs, heroSize: heroSize, lineSize: lineSize, context: context)
 
                 if showStatus {
                     Text(controller.status)
-                        .font(.system(size: 9.5 * scale, weight: .medium))
-                        .tracking(0.4 * scale)
+                        .font(.system(size: 9.5 * fs, weight: .medium))
+                        .tracking(0.4 * fs)
                         .foregroundStyle(.white.opacity(0.4))
                         .lineLimit(1)
                 }
-
-                if controlsVisible {
-                    transportRow(scale: scale)
-                        .transition(.opacity)
-                }
-
-                if controlsVisible, controller.isSynced {
-                    timingRow(scale: scale)
-                        .transition(.opacity)
-                }
+                if controlsVisible { transportRow(fs) }
+                if controlsVisible, controller.isSynced { timingRow(fs) }
             }
-            .padding(.horizontal, 24 * scale)
-            .padding(.vertical, 14 * scale)
+            .padding(.horizontal, 24 * fs)
+            .padding(.vertical, 14 * fs)
             .frame(width: geo.size.width, height: geo.size.height)
-            // Dark contrast halo so white text reads on any wallpaper.
-            .shadow(color: .black.opacity(0.7), radius: max(1, scale))
-            .shadow(color: .black.opacity(0.4), radius: 5 * scale)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .opacity(hovered ? 0.5 : 0) // frosted glass on hover
-                    // Soft top-edge sheen on hover — no flat outline.
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.12), .white.opacity(0.0)],
-                                startPoint: .top, endPoint: .center
-                            ),
-                            lineWidth: 1
-                        )
-                        .opacity(hovered ? 1 : 0)
-                }
-                .environment(\.colorScheme, .dark)
-                .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22 * scale, y: 9 * scale)
-            }
+            .shadow(color: .black.opacity(0.7), radius: max(1, fs))
+            .shadow(color: .black.opacity(0.4), radius: 5 * fs)
+            .background { backgroundLayer(radius: radius) }
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(alignment: .bottomTrailing) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 8.5 * scale, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .shadow(color: .black.opacity(0.6), radius: 2)
-                    .padding(6 * scale)
-                    .opacity(hovered ? 1 : 0)
-                    .allowsHitTesting(false)
-            }
+            .overlay(alignment: .bottomTrailing) { grip(fs) }
             .animation(.easeInOut(duration: 0.28), value: hovered)
-            .animation(.easeOut(duration: 0.3), value: controller.currentLine)
             .onHover { hovered = $0 }
         }
     }
 
-    // MARK: - Pieces
+    // MARK: - Lyric column (fills vertical space)
 
-    private func header(scale: CGFloat) -> some View {
-        HStack(spacing: 6 * scale) {
+    private func lyricColumn(fs: CGFloat, heroSize: CGFloat, lineSize: CGFloat, context: Int) -> some View {
+        let lines = controller.allLines
+        let current = controller.currentLineIndex
+
+        return ZStack {
+            if lines.isEmpty {
+                Text(nonEmpty(controller.currentLine))
+                    .font(.system(size: heroSize, weight: .bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                let cur = max(0, current)
+                let start = max(0, cur - context)
+                let end = min(lines.count - 1, cur + context)
+                VStack(spacing: 6 * fs) {
+                    ForEach(Array(start...end), id: \.self) { i in
+                        lineText(i, current: current, heroSize: heroSize, lineSize: lineSize, fs: fs)
+                    }
+                }
+                .mask(edgeFade(context))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.32), value: current)
+    }
+
+    private func lineText(_ i: Int, current: Int, heroSize: CGFloat, lineSize: CGFloat, fs: CGFloat) -> some View {
+        let isCurrent = i == current
+        let distance = Double(abs(i - max(current, 0)))
+        let opacity = isCurrent ? 1.0 : max(0.16, 0.62 - distance * 0.15)
+        return Text(nonEmpty(controller.allLines[i].text))
+            .font(.system(size: isCurrent ? heroSize : lineSize, weight: isCurrent ? .bold : .regular))
+            .foregroundStyle(.white.opacity(opacity))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
+            .shadow(color: isCurrent ? appearance.accent.color.opacity(0.35) : .clear,
+                    radius: isCurrent ? 11 * fs : 0)
+            .id(i)
+            .transition(.opacity)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// Solid (no fade) for a couple of lines; soft top/bottom fade once the
+    /// column is tall enough to look like a teleprompter.
+    private func edgeFade(_ context: Int) -> LinearGradient {
+        if context < 2 {
+            return LinearGradient(colors: [.black, .black], startPoint: .top, endPoint: .bottom)
+        }
+        return LinearGradient(stops: [
+            .init(color: .clear, location: 0.0),
+            .init(color: .black, location: 0.14),
+            .init(color: .black, location: 0.86),
+            .init(color: .clear, location: 1.0),
+        ], startPoint: .top, endPoint: .bottom)
+    }
+
+    // MARK: - Chrome
+
+    private func header(_ fs: CGFloat) -> some View {
+        HStack(spacing: 6 * fs) {
             Image(systemName: "music.note")
-                .font(.system(size: 8.5 * scale, weight: .semibold))
+                .font(.system(size: 8.5 * fs, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
             Text(controller.title)
-                .font(.system(size: 11 * scale, weight: .semibold))
+                .font(.system(size: 11 * fs, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
             if !controller.artist.isEmpty {
                 Text("·").foregroundStyle(.white.opacity(0.3))
                 Text(controller.artist)
-                    .font(.system(size: 11 * scale, weight: .regular))
+                    .font(.system(size: 11 * fs, weight: .regular))
                     .foregroundStyle(.white.opacity(0.55))
             }
         }
-        .tracking(0.2 * scale)
+        .tracking(0.2 * fs)
         .lineLimit(1)
         .minimumScaleFactor(0.6)
     }
 
-    private func contextLine(_ text: String, scale: CGFloat) -> some View {
-        Text(nonEmpty(text))
-            .font(.system(size: 13 * scale, weight: .regular))
-            .foregroundStyle(.white.opacity(0.32))
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .contentTransition(.opacity)
-    }
-
-    private func heroLine(scale: CGFloat) -> some View {
-        Text(nonEmpty(controller.currentLine))
-            .font(.system(size: 22 * scale, weight: .bold))
-            .foregroundStyle(.white)
-            .lineLimit(2)
-            .minimumScaleFactor(0.4)
-            .multilineTextAlignment(.center)
-            .shadow(color: appearance.accent.color.opacity(0.35), radius: 11 * scale)
-            .contentTransition(.opacity)
-            .padding(.vertical, 1 * scale)
-    }
-
-    private func transportRow(scale: CGFloat) -> some View {
-        HStack(spacing: 24 * scale) {
-            transportButton("backward.fill", scale: scale) { controller.previousTrack() }
-            transportButton(controller.isPlaying ? "pause.fill" : "play.fill", scale: scale) { controller.playPause() }
-            transportButton("forward.fill", scale: scale) { controller.nextTrack() }
+    private func transportRow(_ fs: CGFloat) -> some View {
+        HStack(spacing: 24 * fs) {
+            transportButton("backward.fill", fs: fs) { controller.previousTrack() }
+            transportButton(controller.isPlaying ? "pause.fill" : "play.fill", fs: fs) { controller.playPause() }
+            transportButton("forward.fill", fs: fs) { controller.nextTrack() }
         }
-        .padding(.top, 3 * scale)
+        .padding(.top, 3 * fs)
+        .transition(.opacity)
     }
 
-    private func timingRow(scale: CGFloat) -> some View {
-        HStack(spacing: 12 * scale) {
-            transportButton("minus", scale: scale) { controller.nudgeOffset(-0.1) }
+    private func timingRow(_ fs: CGFloat) -> some View {
+        HStack(spacing: 12 * fs) {
+            transportButton("minus", fs: fs) { controller.nudgeOffset(-0.1) }
             Text(String(format: "%+.1fs", controller.offset))
-                .font(.system(size: 11 * scale, weight: .medium).monospacedDigit())
+                .font(.system(size: 11 * fs, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.8))
-                .frame(minWidth: 42 * scale)
-            transportButton("plus", scale: scale) { controller.nudgeOffset(0.1) }
+                .frame(minWidth: 42 * fs)
+            transportButton("plus", fs: fs) { controller.nudgeOffset(0.1) }
         }
+        .transition(.opacity)
     }
 
-    private func permissionButton(scale: CGFloat) -> some View {
+    private func permissionButton(_ fs: CGFloat) -> some View {
         Button(action: { controller.openAutomationSettings() }) {
             Label("Grant Automation access", systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 12 * scale, weight: .semibold))
+                .font(.system(size: 12 * fs, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 12 * scale)
-                .padding(.vertical, 5 * scale)
+                .padding(.horizontal, 12 * fs)
+                .padding(.vertical, 5 * fs)
                 .background(Capsule().fill(.orange.opacity(0.55)))
         }
         .buttonStyle(.plain)
     }
 
-    private func transportButton(_ symbol: String, scale: CGFloat, action: @escaping () -> Void) -> some View {
+    private func transportButton(_ symbol: String, fs: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14 * scale, weight: .semibold))
+                .font(.system(size: 14 * fs, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .shadow(color: .black.opacity(0.6), radius: 2)
-                .frame(width: 22 * scale, height: 20 * scale)
+                .frame(width: 22 * fs, height: 20 * fs)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    /// Keep a non-empty string so a row keeps its height when a line is blank.
+    private func grip(_ fs: CGFloat) -> some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 8.5 * fs, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.45))
+            .shadow(color: .black.opacity(0.6), radius: 2)
+            .padding(6 * fs)
+            .opacity(hovered ? 1 : 0)
+            .allowsHitTesting(false)
+    }
+
+    private func backgroundLayer(radius: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(hovered ? 0.5 : 0)
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
+                                   startPoint: .top, endPoint: .center),
+                    lineWidth: 1
+                )
+                .opacity(hovered ? 1 : 0)
+        }
+        .environment(\.colorScheme, .dark)
+        .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22, y: 9)
+    }
+
     private func nonEmpty(_ s: String) -> String { s.isEmpty ? " " : s }
 }
