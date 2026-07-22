@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var fullLyricsWindow: NSWindow?
     private var preferencesWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private var utilityWindows: [NSWindow] = []
     private let appearance = Appearance()
 
     private var displayMode: DisplayMode = .overlay
@@ -81,8 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         onboardingWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        registerUtilityWindow(window)
+        present(window)
     }
 
     /// Reapply persisted state on launch (the panel restores its own frame).
@@ -287,57 +288,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFullLyrics() {
-        if let window = fullLyricsWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let hosting = NSHostingController(rootView: FullLyricsView(controller: controller))
-        let window = NSWindow(contentViewController: hosting)
+        if let window = fullLyricsWindow { present(window); return }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: FullLyricsView(controller: controller)))
         window.title = "Lyrics"
         window.styleMask = [.titled, .closable, .resizable]
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 380, height: 520))
         window.center()
         fullLyricsWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        registerUtilityWindow(window)
+        present(window)
     }
 
     // MARK: - Preferences
 
     @objc private func openPreferences() {
-        if let window = preferencesWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let hosting = NSHostingController(rootView: PreferencesView(appearance: appearance, actions: self))
-        let window = NSWindow(contentViewController: hosting)
+        if let window = preferencesWindow { present(window); return }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(appearance: appearance, actions: self)))
         window.title = "lrclrclrc Preferences"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.center()
         preferencesWindow = window
+        registerUtilityWindow(window)
+        present(window)
+    }
+
+    // MARK: - Window presentation
+
+    /// Utility windows (Preferences, lyrics, onboarding) need the app to be a
+    /// regular app while open so they're ⌘Tab-able and focusable; drop back to a
+    /// menu-bar accessory once they all close.
+    private func present(_ window: NSWindow) {
+        NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func openFindLyrics() {
-        if let window = findLyricsWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
+    private func registerUtilityWindow(_ window: NSWindow) {
+        utilityWindows.append(window)
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.updateActivationPolicy() }
         }
-        let hosting = NSHostingController(rootView: FindLyricsView(controller: controller))
-        let window = NSWindow(contentViewController: hosting)
+    }
+
+    private func updateActivationPolicy() {
+        let anyVisible = utilityWindows.contains { $0.isVisible }
+        NSApp.setActivationPolicy(anyVisible ? .regular : .accessory)
+    }
+
+    @objc private func openFindLyrics() {
+        if let window = findLyricsWindow { present(window); return }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: FindLyricsView(controller: controller)))
         window.title = "Find Lyrics"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.center()
         findLyricsWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        registerUtilityWindow(window)
+        present(window)
     }
 
     // MARK: - Menu-bar lyrics
