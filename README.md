@@ -35,11 +35,11 @@ npm install
 npm start
 ```
 
-The app has **no Dock icon** — it lives in the menu bar (the small dot).
-From the menu-bar icon you can show/hide the overlay, toggle click-through,
-and quit. On first run macOS will ask permission for the app (or your
-terminal, in dev) to control the **Music** app and to see **Automation** —
-grant both, otherwise track detection returns nothing.
+The app has **no Dock icon** — it lives in the menu bar (the small dot). During
+development macOS asks the *terminal* for Automation permission; the packaged
+app asks for itself. From the menu-bar icon you can show/hide the overlay,
+toggle click-through, and quit. On first run macOS will ask permission to
+control the **Music** app — grant it, otherwise track detection returns nothing.
 
 ### Controls
 
@@ -48,6 +48,43 @@ grant both, otherwise track detection returns nothing.
 - **Click-through** makes the overlay ignore the mouse so clicks land on the
   app behind it (it dims slightly to show it's passive). Toggle it back from
   the menu-bar icon.
+
+## Build an installable app
+
+Package a universal (`arm64` + `x64`) macOS `.dmg` with electron-builder:
+
+```bash
+npm install
+npm run dist        # → dist/lrclrclrc-<version>-universal.dmg
+```
+
+Open the DMG and drag **lrclrclrc** to Applications. Because the build isn't
+signed with an Apple Developer ID, Gatekeeper blocks it on first launch —
+**right-click the app → Open**, then confirm, to run it anyway. On launch macOS
+prompts to allow it to control **Music**; grant it or track detection stays
+empty.
+
+The packaged app requests the `com.apple.security.automation.apple-events`
+entitlement (see `build/entitlements.mac.plist`) and ships as an `LSUIElement`
+agent so it has no Dock icon.
+
+Other build targets:
+
+```bash
+npm run pack        # unpacked .app in dist/ (fast, for local testing)
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and PR to `main`:
+
+- **check** (Ubuntu) — `npm run check`, a dependency-free `node --check` pass
+  over every JS file plus a `package.json` parse check.
+- **build-mac** (macOS) — builds the universal DMG (ad-hoc signed, since CI has
+  no Developer ID) and uploads it as the `lrclrclrc-macos-dmg` artifact, so you
+  can download an installable build straight from the Actions run.
+
+Run the checks locally with `npm run check`.
 
 ## Project layout
 

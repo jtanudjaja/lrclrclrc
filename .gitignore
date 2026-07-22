@@ -1,10 +1,9 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output (electron-builder writes here; build/ holds signed resources and is tracked)
 dist/
 out/
-build/
 *.dmg
 *.zip
 *.app
