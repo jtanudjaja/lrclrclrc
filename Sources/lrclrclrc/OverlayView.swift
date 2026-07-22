@@ -87,17 +87,20 @@ struct OverlayView: View {
         .animation(.easeInOut(duration: 0.28), value: hovered)
         .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
         .onHover { hovered = $0 }
-        // Cursor authority, run inside SwiftUI's own hover pipeline — the one
-        // channel proven to beat the hosting view's built-in handling (it's
-        // what killed the I-beam). Resize arrows in the edge band, plain
-        // arrow over the interior. The *resizing itself* is the titled
-        // window's native machinery; only the cursor display is ours.
+        // Cursor discipline via SwiftUI's own hover pipeline (the channel that
+        // killed the I-beam): plain arrow over the interior, hands OFF in the
+        // edge zone. Modern macOS shows resize cursors at/just outside the
+        // window boundary (verify with Finder) — the titled frame provides
+        // that natively, and setting our own cursor there only fights it.
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {
             case .active(let point):
-                (ResizeCursors.cursor(at: point, in: size) ?? .arrow).set()
+                let band: CGFloat = 8
+                let nearEdge = point.x <= band || point.y <= band
+                    || point.x >= size.width - band || point.y >= size.height - band
+                if !nearEdge { NSCursor.arrow.set() }
             case .ended:
-                NSCursor.arrow.set()
+                break // leaving the card — the system owns the cursor
             }
         }
     }
