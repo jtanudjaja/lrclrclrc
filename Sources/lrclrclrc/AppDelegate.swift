@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: OverlayPanel?
     private let controller = LyricsController()
     private var clickThrough = false
+    private var clickThroughItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let hosting = NSHostingView(rootView: OverlayView(controller: controller))
@@ -28,7 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(makeItem("Show / Hide Overlay", #selector(toggleOverlay), "h"))
-        menu.addItem(makeItem("Click-Through (ignore mouse)", #selector(toggleClickThrough), "t"))
+        menu.addItem(.separator())
+        menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
+        menu.addItem(makeItem("Smaller", #selector(shrink), "-"))
+        let ct = makeItem("Click-Through (ignore mouse)", #selector(toggleClickThrough), "t")
+        clickThroughItem = ct
+        menu.addItem(ct)
         menu.addItem(.separator())
         menu.addItem(makeItem("Quit lrclrclrc", #selector(quit), "q"))
         item.menu = menu
@@ -54,8 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleClickThrough() {
         clickThrough.toggle()
         panel?.ignoresMouseEvents = clickThrough
-        statusItem?.menu?.item(at: 1)?.state = clickThrough ? .on : .off
+        clickThroughItem?.state = clickThrough ? .on : .off
     }
+
+    @objc private func enlarge() { panel?.scaleBy(1.15) }
+    @objc private func shrink() { panel?.scaleBy(0.87) }
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
