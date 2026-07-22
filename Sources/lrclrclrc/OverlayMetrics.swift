@@ -9,14 +9,14 @@ import CoreGraphics
 /// The card is three stacked components, each reacting to **window height** and
 /// **text size** (every value scales with `fontScale`):
 ///   • **header**  — title · artist (top)
-///   • **lyrics**  — the middle band, guaranteed at least `minLyricLines`
-///   • **footer**  — "synced · LRCLIB" credit + transport / timing controls
+///   • **lyrics**  — the middle band, guaranteed at least `minLyricLines`; the
+///                   "· LRCLIB" credit rides in the slot after the final line
+///   • **footer**  — transport / timing controls (bottom)
 enum OverlayMetrics {
     // Base heights in points at fontScale = 1. Everything is multiplied by the
     // current fontScale at the call site.
     static let vPadding: CGFloat = 28        // 14 top + 14 bottom
     static let headerH: CGFloat = 22
-    static let statusH: CGFloat = 16
     static let controlsSyncedH: CGFloat = 52 // transport + timing rows
     static let controlsPlainH: CGFloat = 28  // transport row only
     static let lineUnit: CGFloat = 25.5      // one lyric line ≈ lineSize(15) * 1.7
@@ -33,9 +33,8 @@ enum OverlayMetrics {
     // Component visibility thresholds. These are a graceful-degradation net for
     // the rare case where the window is somehow smaller than the enforced
     // minimum (e.g. a tiny external display); normally `minContentSize` keeps
-    // the window big enough that all three components are always present.
+    // the window big enough that both header and controls are always present.
     static func headerVisible(height: CGFloat, fs: CGFloat) -> Bool { height >= 92 * fs }
-    static func statusVisible(height: CGFloat, fs: CGFloat) -> Bool { height >= 148 * fs }
     static func controlsFit(height: CGFloat, width: CGFloat, fs: CGFloat) -> Bool {
         height >= 188 * fs && width >= 240 * fs
     }
@@ -45,7 +44,7 @@ enum OverlayMetrics {
     /// never allowed to be resized (or auto-grown) below this.
     static func minContentSize(fontScale: Double) -> CGSize {
         let fs = CGFloat(fontScale)
-        let height = (vPadding + headerH + statusH + controlsSyncedH
+        let height = (vPadding + headerH + controlsSyncedH
                       + lineUnit * CGFloat(minLyricLines) + stackSpacing) * fs
         return CGSize(width: (minWidthBase * fs).rounded(),
                       height: height.rounded())

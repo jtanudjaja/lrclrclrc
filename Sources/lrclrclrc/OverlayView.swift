@@ -27,7 +27,6 @@ struct OverlayView: View {
             // fallback if the window is ever forced smaller than that floor.
             let h = geo.size.height
             let showHeader = OverlayMetrics.headerVisible(height: h, fs: fs)
-            let showStatus = OverlayMetrics.statusVisible(height: h, fs: fs) && !controller.status.isEmpty
             let roomForControls = OverlayMetrics.controlsFit(height: h, width: geo.size.width, fs: fs)
             let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
 
@@ -38,8 +37,7 @@ struct OverlayView: View {
                 ? (controller.isSynced ? OverlayMetrics.controlsSyncedH : OverlayMetrics.controlsPlainH) * fs
                 : 0
             let reserve = (OverlayMetrics.vPadding
-                + (showHeader ? OverlayMetrics.headerH : 0)
-                + (showStatus ? OverlayMetrics.statusH : 0)) * fs
+                + (showHeader ? OverlayMetrics.headerH : 0)) * fs
                 + controlsH
             let fitLines = max(1, Int((h - reserve) / (OverlayMetrics.lineUnit * fs)))
             let context = max(0, min(9, (fitLines - 1) / 2))
@@ -48,15 +46,12 @@ struct OverlayView: View {
                 if controller.permissionNeeded { permissionButton(fs) }
                 if showHeader { header(fs) }
 
+                // The "· LRCLIB" credit is no longer a fixed footer — it's the
+                // slot rendered just after the final lyric (see lyricColumn), so
+                // it scrolls into view at the end of the song instead of always
+                // occupying space.
                 lyricColumn(fs: fs, heroSize: heroSize, lineSize: lineSize, context: context)
 
-                if showStatus {
-                    Text(controller.status)
-                        .font(.system(size: 9.5 * fs, weight: .medium))
-                        .tracking(0.4 * fs)
-                        .foregroundStyle(.white.opacity(0.4))
-                        .lineLimit(1)
-                }
                 if roomForControls {
                     controlsBlock(fs: fs, visible: controlsVisible)
                         .frame(height: controlsH)
@@ -83,18 +78,26 @@ struct OverlayView: View {
 
         return ZStack {
             if lines.isEmpty {
-                Text(nonEmpty(controller.currentLine))
-                    .font(.system(size: heroSize, weight: .bold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                // No timed lyrics yet: show whatever line we have plus the status
+                // ("looking up lyrics…", "unsynced · LRCLIB", etc.) so the credit
+                // and progress are still visible when there's nothing to scroll.
+                VStack(spacing: 8 * fs) {
+                    Text(nonEmpty(controller.currentLine))
+                        .font(.system(size: heroSize, weight: .bold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !controller.status.isEmpty { creditText(fs, lineSize: lineSize) }
+                }
             } else {
                 let cur = max(0, current)
                 // Always render an equal number of slots above and below the
                 // current line. When the song hasn't got that many lines above
                 // (or below) yet, the slot is left blank — so the current line
                 // stays pinned to the vertical centre instead of drifting up at
-                // the start or down at the end.
+                // the start or down at the end. The slot immediately *after* the
+                // final lyric holds the "· LRCLIB" credit, so it scrolls in at
+                // the end of the song rather than being shown the whole time.
                 VStack(spacing: 6 * fs) {
                     ForEach(-context...context, id: \.self) { off in
                         let i = cur + off
@@ -106,6 +109,8 @@ struct OverlayView: View {
                                     // same behaviour as the Full Lyrics window.
                                     if let t = controller.allLines[i].time { controller.seek(to: t) }
                                 }
+                        } else if i == lines.count && !controller.status.isEmpty {
+                            creditText(fs, lineSize: lineSize)
                         } else {
                             Color.clear.frame(height: lineSize * 1.2)
                         }
@@ -133,6 +138,17 @@ struct OverlayView: View {
             .id(i)
             .transition(.opacity)
             .frame(maxWidth: .infinity)
+    }
+
+    /// The source credit / status, rendered as one lyric-sized slot so it sits
+    /// naturally below the last line.
+    private func creditText(_ fs: CGFloat, lineSize: CGFloat) -> some View {
+        Text(controller.status)
+            .font(.system(size: 9.5 * fs, weight: .medium))
+            .tracking(0.4 * fs)
+            .foregroundStyle(.white.opacity(0.4))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: lineSize * 1.2)
     }
 
     /// Solid (no fade) for a couple of lines; soft top/bottom fade once the
