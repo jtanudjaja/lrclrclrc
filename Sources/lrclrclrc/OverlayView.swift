@@ -1,175 +1,87 @@
 import SwiftUI
+import AppKit
 
-/// The lyric card.
+/// The lyric card, per the layout spec:
 ///
-/// Sizing model: **font size** comes only from `appearance.fontScale` (the Text
-/// Size knob / Larger-Smaller), independent of the window. The **window size**
-/// decides how many lyric lines are shown — a taller card fills with more
-/// context lines, fading softly at the top and bottom like a teleprompter.
+/// Three zones — header (measured, never truncated), stage (flexible), footer
+/// (constant one-row, reserved) — around a pixel-budget teleprompter that pins
+/// the current line to the stage's exact center. Every text height is measured
+/// with the real font at the real width; overflow renders clipped behind the
+/// edge fade and can never push the chrome. Idle is the design (near-invisible
+/// scrim, self-shadowed text); hover only changes opacity. Lines can be clicked
+/// or vertically scrubbed to seek.
 struct OverlayView: View {
     @ObservedObject var controller: LyricsController
     @ObservedObject var appearance: Appearance
+
     @State private var hovered = false
+    // Scrub gesture state (spec Part 7).
+    @State private var scrubbing = false
+    @State private var scrubTranslation: CGFloat = 0
+    @State private var scrubAnchor = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var motion: Animation? {
+        reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)
+    }
 
     var body: some View {
         GeometryReader { geo in
-            let fs = CGFloat(appearance.fontScale)
-            let heroSize = 22 * fs
-            let lineSize = 15 * fs
-            let radius = 18 + 6 * (fs - 1)
-
-            // Three components — header (top), lyrics (middle), footer (status +
-            // controls, bottom) — each reacting to window height and text size.
-            // Visibility is keyed to window size only (never to hover), so
-            // resizing is the only thing that adds/removes a component. The panel
-            // enforces a minimum size (OverlayMetrics.minContentSize) so all
-            // three normally always fit; these thresholds are the graceful
-            // fallback if the window is ever forced smaller than that floor.
-            let h = geo.size.height
-            let showHeader = OverlayMetrics.headerVisible(height: h, fs: fs)
-            let roomForControls = OverlayMetrics.controlsFit(height: h, width: geo.size.width, fs: fs)
-            let controlsVisible = (hovered || appearance.alwaysShowControls) && roomForControls
-
-            // Footer control space is *reserved whenever it could appear* — not
-            // when it is currently shown — so hovering fades the controls into
-            // already-reserved space instead of reflowing the lyric column.
-            let controlsH: CGFloat = roomForControls
-                ? (controller.isSynced ? OverlayMetrics.controlsSyncedH : OverlayMetrics.controlsPlainH) * fs
-                : 0
-            let reserve = (OverlayMetrics.vPadding
-                + (showHeader ? OverlayMetrics.headerH : 0)) * fs
-                + controlsH
-            let fitLines = max(1, Int((h - reserve) / (OverlayMetrics.lineUnit * fs)))
-            let context = max(0, min(9, (fitLines - 1) / 2))
-
-            VStack(spacing: 5 * fs) {
-                if controller.permissionNeeded { permissionButton(fs) }
-                if showHeader { header(fs) }
-
-                // The "· LRCLIB" credit is no longer a fixed footer — it's the
-                // slot rendered just after the final lyric (see lyricColumn), so
-                // it scrolls into view at the end of the song instead of always
-                // occupying space.
-                lyricColumn(fs: fs, heroSize: heroSize, lineSize: lineSize, context: context)
-
-                if roomForControls {
-                    controlsBlock(fs: fs, visible: controlsVisible)
-                        .frame(height: controlsH)
-                }
-            }
-            .padding(.horizontal, 24 * fs)
-            .padding(.vertical, 14 * fs)
-            .frame(width: geo.size.width, height: geo.size.height)
-            .shadow(color: .black.opacity(0.7), radius: max(1, fs))
-            .shadow(color: .black.opacity(0.4), radius: 5 * fs)
-            .background { backgroundLayer(radius: radius) }
-            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(alignment: .bottomTrailing) { grip(fs) }
-            .animation(.easeInOut(duration: 0.28), value: hovered)
-            .onHover { hovered = $0 }
+            card(size: geo.size)
         }
     }
 
-    // MARK: - Lyric column (fills vertical space)
+    // MARK: - Card frame (the three zones)
 
-    private func lyricColumn(fs: CGFloat, heroSize: CGFloat, lineSize: CGFloat, context: Int) -> some View {
-        let lines = controller.allLines
-        let current = controller.currentLineIndex
+    private func card(size: CGSize) -> some View {
+        let fs = CGFloat(appearance.fontScale)
+        let clickThrough = appearance.clickThroughActive
+        let radius = 18 + 6 * (fs - 1)
+        let showHeader = OverlayMetrics.headerVisible(height: size.height, fs: fs)
+        let footerOn = !clickThrough && OverlayMetrics.controlsFit(height: size.height, width: size.width, fs: fs)
+        let controlsVisible = footerOn && (hovered || appearance.alwaysShowControls)
 
-        return ZStack {
-            if lines.isEmpty {
-                // No timed lyrics yet: show whatever line we have plus the status
-                // ("looking up lyrics…", "unsynced · LRCLIB", etc.) so the credit
-                // and progress are still visible when there's nothing to scroll.
-                VStack(spacing: 8 * fs) {
-                    Text(nonEmpty(controller.currentLine))
-                        .font(.system(size: heroSize, weight: .bold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !controller.status.isEmpty { creditText(fs, lineSize: lineSize) }
-                }
+        return VStack(spacing: 5 * fs) {
+            if showHeader { headerView(fs: fs, cardWidth: size.width) }
+
+            stageArea(fs: fs)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if footerOn {
+                footerRow(fs: fs, cardWidth: size.width, visible: controlsVisible)
+                    .frame(height: OverlayMetrics.footerH * fs)
+            }
+        }
+        .padding(.horizontal, 24 * fs)
+        .padding(.vertical, 14 * fs)
+        .frame(width: size.width, height: size.height)
+        .background { backgroundLayer(radius: radius) }
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .overlay(alignment: .bottomTrailing) { grip(fs) }
+        .opacity(controller.longIdle && !hovered ? 0.25 : 1)
+        .animation(.easeInOut(duration: 0.28), value: hovered)
+        .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
+        .onHover { hovered = $0 }
+    }
+
+    // MARK: - Header (measured, never truncated, never resizes the window)
+
+    @ViewBuilder
+    private func headerView(fs: CGFloat, cardWidth: CGFloat) -> some View {
+        let oneRow = controller.artist.isEmpty || OverlayMetrics.headerFitsOneRow(
+            title: controller.title, artist: controller.artist, fs: fs, cardWidth: cardWidth
+        )
+        Group {
+            if oneRow {
+                headerOneRow(fs: fs)
             } else {
-                let cur = max(0, current)
-                // Always render an equal number of slots above and below the
-                // current line. When the song hasn't got that many lines above
-                // (or below) yet, the slot is left blank — so the current line
-                // stays pinned to the vertical centre instead of drifting up at
-                // the start or down at the end. The slot immediately *after* the
-                // final lyric holds the "· LRCLIB" credit, so it scrolls in at
-                // the end of the song rather than being shown the whole time.
-                VStack(spacing: 6 * fs) {
-                    ForEach(-context...context, id: \.self) { off in
-                        let i = cur + off
-                        if i >= 0 && i < lines.count {
-                            lineText(i, current: current, heroSize: heroSize, lineSize: lineSize, fs: fs)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    // Click a timed line to jump playback there —
-                                    // same behaviour as the Full Lyrics window.
-                                    if let t = controller.allLines[i].time { controller.seek(to: t) }
-                                }
-                        } else if i == lines.count && !controller.status.isEmpty {
-                            creditText(fs, lineSize: lineSize)
-                        } else {
-                            Color.clear.frame(height: lineSize * 1.2)
-                        }
-                    }
-                }
-                .mask(edgeFade(context))
+                headerSplit(fs: fs)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .animation(.easeInOut(duration: 0.32), value: current)
+        .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
     }
 
-    private func lineText(_ i: Int, current: Int, heroSize: CGFloat, lineSize: CGFloat, fs: CGFloat) -> some View {
-        let isCurrent = i == current
-        let distance = Double(abs(i - max(current, 0)))
-        let opacity = isCurrent ? 1.0 : max(0.16, 0.62 - distance * 0.15)
-        return Text(nonEmpty(controller.allLines[i].text))
-            .font(.system(size: isCurrent ? heroSize : lineSize, weight: isCurrent ? .bold : .regular))
-            .foregroundStyle(.white.opacity(opacity))
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
-            .shadow(color: isCurrent ? appearance.accent.color.opacity(0.35) : .clear,
-                    radius: isCurrent ? 11 * fs : 0)
-            .id(i)
-            .transition(.opacity)
-            .frame(maxWidth: .infinity)
-    }
-
-    /// The source credit / status, rendered as one lyric-sized slot so it sits
-    /// naturally below the last line.
-    private func creditText(_ fs: CGFloat, lineSize: CGFloat) -> some View {
-        Text(controller.status)
-            .font(.system(size: 9.5 * fs, weight: .medium))
-            .tracking(0.4 * fs)
-            .foregroundStyle(.white.opacity(0.4))
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, minHeight: lineSize * 1.2)
-    }
-
-    /// Solid (no fade) for a couple of lines; soft top/bottom fade once the
-    /// column is tall enough to look like a teleprompter.
-    private func edgeFade(_ context: Int) -> LinearGradient {
-        if context < 2 {
-            return LinearGradient(colors: [.black, .black], startPoint: .top, endPoint: .bottom)
-        }
-        return LinearGradient(stops: [
-            .init(color: .clear, location: 0.0),
-            .init(color: .black, location: 0.14),
-            .init(color: .black, location: 0.86),
-            .init(color: .clear, location: 1.0),
-        ], startPoint: .top, endPoint: .bottom)
-    }
-
-    // MARK: - Chrome
-
-    private func header(_ fs: CGFloat) -> some View {
-        // One concatenated line so a long title+artist truncates cleanly at the
-        // tail instead of overflowing past the card edge.
+    private func headerOneRow(fs: CGFloat) -> some View {
         var text = Text(Image(systemName: "music.note"))
             .font(.system(size: 8.5 * fs, weight: .semibold))
             .foregroundColor(.white.opacity(0.45))
@@ -183,56 +95,361 @@ struct OverlayView: View {
         }
         return text
             .tracking(0.2 * fs)
-            .lineLimit(1)
-            .truncationMode(.tail)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
     }
 
-    /// Transport (+ timing when synced) inside a fixed-height slot. Only its
-    /// opacity changes on hover — the slot is always reserved, so nothing above
-    /// it moves.
-    private func controlsBlock(fs: CGFloat, visible: Bool) -> some View {
-        VStack(spacing: 4 * fs) {
-            transportRow(fs)
-            if controller.isSynced { timingRow(fs) }
+    private func headerSplit(fs: CGFloat) -> some View {
+        VStack(spacing: 1 * fs) {
+            (Text(Image(systemName: "music.note"))
+                .font(.system(size: 8.5 * fs, weight: .semibold))
+                .foregroundColor(.white.opacity(0.45))
+             + Text("  \(controller.title)")
+                .font(.system(size: 11 * fs, weight: .semibold))
+                .foregroundColor(.white.opacity(0.9)))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(controller.artist)
+                .font(.system(size: 10 * fs))
+                .foregroundColor(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Stage (one designed home per state)
+
+    private func stageArea(fs: CGFloat) -> some View {
+        GeometryReader { g in
+            stageContent(fs: fs, stage: g.size)
+                .frame(width: g.size.width, height: g.size.height)
+        }
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func stageContent(fs: CGFloat, stage: CGSize) -> some View {
+        switch controller.stagePhase {
+        case .permission:
+            permissionStage(fs)
+        case .idle:
+            idleStage(fs)
+        case .searching:
+            searchingStage(fs)
+        case .notFound:
+            notFoundStage(fs)
+        case .intro(let countdown):
+            introStage(fs, countdown: countdown)
+        case .synced:
+            teleprompter(fs: fs, stage: stage, softer: false)
+        case .unsynced:
+            teleprompter(fs: fs, stage: stage, softer: true)
+        }
+    }
+
+    private func permissionStage(_ fs: CGFloat) -> some View {
+        VStack(spacing: 8 * fs) {
+            Text("lrclrclrc needs permission to read the current track")
+                .font(.system(size: 12 * fs))
+                .foregroundStyle(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: { controller.openAutomationSettings() }) {
+                Text("Grant Automation Access")
+                    .font(.system(size: 11 * fs, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12 * fs)
+                    .padding(.vertical, 4 * fs)
+                    .background(Capsule().fill(.orange.opacity(0.55)))
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func idleStage(_ fs: CGFloat) -> some View {
+        VStack(spacing: 6 * fs) {
+            Text("♪")
+                .font(.system(size: 20 * fs, weight: .bold))
+                .foregroundStyle(.white.opacity(0.4))
+            Text("Play something in Music or Spotify")
+                .font(.system(size: 10.5 * fs))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func searchingStage(_ fs: CGFloat) -> some View {
+        VStack(spacing: 9 * fs) {
+            Capsule().fill(.white.opacity(0.16)).frame(width: 150 * fs, height: 10 * fs)
+            Capsule().fill(.white.opacity(0.11)).frame(width: 104 * fs, height: 8 * fs)
+            Text(controller.status)
+                .font(.system(size: 9.5 * fs, weight: .medium))
+                .tracking(0.4 * fs)
+                .foregroundStyle(.white.opacity(0.4))
+                .padding(.top, 4 * fs)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func notFoundStage(_ fs: CGFloat) -> some View {
+        VStack(spacing: 8 * fs) {
+            Text("No lyrics found for this track")
+                .font(.system(size: 12 * fs))
+                .foregroundStyle(.white.opacity(0.65))
+            Button(action: {
+                NotificationCenter.default.post(name: Notification.Name("lrclrclrc.openFindLyrics"), object: nil)
+            }) {
+                Text("Find lyrics…")
+                    .font(.system(size: 10.5 * fs, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 11 * fs)
+                    .padding(.vertical, 3.5 * fs)
+                    .background(Capsule().fill(appearance.accent.color.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
+        }
+        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func introStage(_ fs: CGFloat, countdown: Int) -> some View {
+        VStack(spacing: 6 * fs) {
+            Text("♪ ♪ ♪")
+                .font(.system(size: 15 * fs, weight: .bold))
+                .foregroundStyle(.white.opacity(0.75))
+                .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
+            Text(countdownLabel(countdown))
+                .font(.system(size: 10 * fs, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.4))
+            if !controller.nextLine.isEmpty {
+                Text(controller.nextLine)
+                    .font(.system(size: 15 * fs))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4 * fs)
+            }
+        }
+        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func countdownLabel(_ seconds: Int) -> String {
+        String(format: "next line in 0:%02d", max(0, seconds))
+    }
+
+    // MARK: - Teleprompter (pixel budget around a pinned center)
+
+    private struct Slot: Identifiable {
+        let id: Int          // line index; lines.count == the credit slot
+        let y: CGFloat       // offset of the slot's center from stage center
+        let isCredit: Bool
+    }
+
+    private func teleprompter(fs: CGFloat, stage: CGSize, softer: Bool) -> some View {
+        let lines = controller.allLines
+        let measureW = min(stage.width, 450 * fs)
+        let step = OverlayMetrics.lineUnit * fs * 1.15
+        let playing = max(0, controller.currentLineIndex)
+
+        // Scrub: whole steps move the focus candidate; the remainder slides the
+        // column 1:1 under the cursor, with rubber resistance past the ends.
+        let rawShift = scrubbing ? Int((scrubTranslation / step).rounded()) : 0
+        let unclamped = scrubAnchor - rawShift
+        let focus = scrubbing ? min(max(unclamped, 0), max(0, lines.count - 1)) : playing
+        var residual: CGFloat = 0
+        if scrubbing {
+            residual = scrubTranslation - CGFloat(scrubAnchor - focus) * step
+            if unclamped != focus { residual *= 0.3 } // rubber-band
+        }
+
+        let slots = computeSlots(lines: lines, focus: focus, stage: stage, measureW: measureW, fs: fs)
+
+        return ZStack {
+            ForEach(slots) { slot in
+                slotView(slot, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs)
+                    .frame(width: measureW)
+                    .offset(y: slot.y + residual)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .mask(edgeFade)
+        .contentShape(Rectangle())
+        .gesture(scrubGesture(step: step, lineCount: lines.count))
+        .animation(scrubbing ? nil : motion, value: controller.currentLineIndex)
+    }
+
+    /// Greedy pixel-budget fill around the pinned hero (spec Part 3, rules 1–2),
+    /// rendering one overflow line past each budget for the clipped depth cue
+    /// (rule 5), plus the credit slot after the final line.
+    private func computeSlots(lines: [LrcLine], focus: Int, stage: CGSize, measureW: CGFloat, fs: CGFloat) -> [Slot] {
+        guard !lines.isEmpty else { return [] }
+        let f = min(max(focus, 0), lines.count - 1)
+        let gap = 6 * fs
+        let heroFont = OverlayMetrics.heroFont(fs: fs)
+        let lineFont = OverlayMetrics.lineFont(fs: fs)
+        let heroH = OverlayMetrics.textHeight(lines[f].text, font: heroFont, width: measureW)
+        let budget = max(0, (stage.height - heroH) / 2)
+
+        var slots = [Slot(id: f, y: 0, isCredit: false)]
+
+        // Upward.
+        var edge = -heroH / 2
+        var used: CGFloat = 0
+        var i = f - 1
+        while i >= 0 {
+            let h = OverlayMetrics.textHeight(lines[i].text, font: lineFont, width: measureW)
+            slots.append(Slot(id: i, y: edge - gap - h / 2, isCredit: false))
+            edge -= gap + h
+            used += gap + h
+            i -= 1
+            if used > budget { break } // that one was the clipped overflow line
+        }
+
+        // Downward (the slot after the last line carries the credit).
+        edge = heroH / 2
+        used = 0
+        i = f + 1
+        while i <= lines.count {
+            let isCredit = i == lines.count
+            if isCredit && controller.status.isEmpty { break }
+            let h = isCredit
+                ? 14 * fs
+                : OverlayMetrics.textHeight(lines[i].text, font: lineFont, width: measureW)
+            slots.append(Slot(id: i, y: edge + gap + h / 2, isCredit: isCredit))
+            edge += gap + h
+            used += gap + h
+            i += 1
+            if used > budget { break }
+        }
+        return slots
+    }
+
+    @ViewBuilder
+    private func slotView(_ slot: Slot, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat) -> some View {
+        if slot.isCredit {
+            Text(controller.status)
+                .font(.system(size: 9.5 * fs, weight: .medium))
+                .tracking(0.4 * fs)
+                .foregroundStyle(.white.opacity(0.4))
+        } else {
+            lyricLine(slot.id, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs)
+        }
+    }
+
+    private func lyricLine(_ index: Int, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat) -> some View {
+        let isFocus = index == focus
+        let distance = Double(abs(index - focus))
+        let opacity = isFocus ? 1.0 : max(0.16, 0.62 - distance * 0.15)
+        let raw = lines[index].text
+        let showMarker = scrubbing && index == playing && !isFocus
+
+        return HStack(spacing: 6 * fs) {
+            Text(raw.isEmpty ? "♪" : raw)
+                .font(.system(size: isFocus ? 22 * fs : 15 * fs,
+                              weight: isFocus ? (softer ? .semibold : .bold) : .regular))
+                .foregroundStyle(.white.opacity(opacity))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
+                .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
+                .shadow(color: (isFocus && !softer) ? appearance.accent.color.opacity(0.35) : .clear,
+                        radius: (isFocus && !softer) ? 11 * fs : 0)
+            if showMarker {
+                Circle()
+                    .fill(appearance.accent.color.opacity(0.9))
+                    .frame(width: 4 * fs, height: 4 * fs)
+            }
+            if scrubbing, isFocus, let target = controller.seekTarget(forLine: index) {
+                timeChip(target, fs: fs)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { controller.seek(toLine: index) }
+    }
+
+    private func timeChip(_ seconds: Double, fs: CGFloat) -> some View {
+        let s = max(0, Int(seconds))
+        return Text(String(format: "%d:%02d", s / 60, s % 60))
+            .font(.system(size: 9 * fs, weight: .semibold).monospacedDigit())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7 * fs)
+            .padding(.vertical, 2 * fs)
+            .background(Capsule().fill(appearance.accent.color.opacity(0.32)))
+    }
+
+    private var edgeFade: LinearGradient {
+        LinearGradient(stops: [
+            .init(color: .clear, location: 0.0),
+            .init(color: .black, location: 0.12),
+            .init(color: .black, location: 0.88),
+            .init(color: .clear, location: 1.0),
+        ], startPoint: .top, endPoint: .bottom)
+    }
+
+    // MARK: - Scrub gesture (spec Part 7)
+
+    private func scrubGesture(step: CGFloat, lineCount: Int) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                if !scrubbing {
+                    // Only predominantly-vertical drags scrub; anything else is
+                    // left alone (the window keeps its drag-to-move behaviour).
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    guard lineCount > 0 else { return }
+                    scrubbing = true
+                    scrubAnchor = max(0, controller.currentLineIndex)
+                }
+                scrubTranslation = value.translation.height
+            }
+            .onEnded { value in
+                guard scrubbing else { return }
+                let shift = Int((value.translation.height / step).rounded())
+                scrubbing = false
+                scrubTranslation = 0
+                guard shift != 0, lineCount > 0 else { return } // no move → cancel
+                let target = min(max(scrubAnchor - shift, 0), lineCount - 1)
+                controller.seek(toLine: target)
+            }
+    }
+
+    // MARK: - Footer (one constant row, aligned to the lyric column)
+
+    private func footerRow(fs: CGFloat, cardWidth: CGFloat, visible: Bool) -> some View {
+        // Align controls to the same capped column as the lyrics so they never
+        // drift to far corners on wide cards.
+        let columnW = min(cardWidth - 48 * fs, 498 * fs)
+        return ZStack {
+            HStack(spacing: 24 * fs) {
+                transportButton("backward.fill", fs: fs) { controller.previousTrack() }
+                transportButton(controller.isPlaying ? "pause.fill" : "play.fill", fs: fs) { controller.playPause() }
+                transportButton("forward.fill", fs: fs) { controller.nextTrack() }
+            }
+            HStack {
+                Spacer()
+                timingCluster(fs)
+                    .opacity(controller.isSynced ? 1 : 0)
+                    .allowsHitTesting(controller.isSynced)
+            }
+        }
+        .frame(width: columnW)
+        .frame(maxWidth: .infinity)
         .opacity(visible ? 1 : 0)
         .allowsHitTesting(visible)
     }
 
-    private func transportRow(_ fs: CGFloat) -> some View {
-        HStack(spacing: 24 * fs) {
-            transportButton("backward.fill", fs: fs) { controller.previousTrack() }
-            transportButton(controller.isPlaying ? "pause.fill" : "play.fill", fs: fs) { controller.playPause() }
-            transportButton("forward.fill", fs: fs) { controller.nextTrack() }
-        }
-        .padding(.top, 3 * fs)
-        .transition(.opacity)
-    }
-
-    private func timingRow(_ fs: CGFloat) -> some View {
-        HStack(spacing: 12 * fs) {
+    private func timingCluster(_ fs: CGFloat) -> some View {
+        HStack(spacing: 8 * fs) {
             transportButton("minus", fs: fs) { controller.nudgeOffset(-0.1) }
             Text(String(format: "%+.1fs", controller.offset))
-                .font(.system(size: 11 * fs, weight: .medium).monospacedDigit())
+                .font(.system(size: 10.5 * fs, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.8))
-                .frame(minWidth: 42 * fs)
             transportButton("plus", fs: fs) { controller.nudgeOffset(0.1) }
         }
-        .transition(.opacity)
-    }
-
-    private func permissionButton(_ fs: CGFloat) -> some View {
-        Button(action: { controller.openAutomationSettings() }) {
-            Label("Grant Automation access", systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 12 * fs, weight: .semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12 * fs)
-                .padding(.vertical, 5 * fs)
-                .background(Capsule().fill(.orange.opacity(0.55)))
-        }
-        .buttonStyle(.plain)
     }
 
     private func transportButton(_ symbol: String, fs: CGFloat, action: @escaping () -> Void) -> some View {
@@ -246,6 +463,8 @@ struct OverlayView: View {
         }
         .buttonStyle(.plain)
     }
+
+    // MARK: - Chrome
 
     private func grip(_ fs: CGFloat) -> some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -275,6 +494,4 @@ struct OverlayView: View {
         .environment(\.colorScheme, .dark)
         .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22, y: 9)
     }
-
-    private func nonEmpty(_ s: String) -> String { s.isEmpty ? " " : s }
 }

@@ -165,7 +165,11 @@ final class EdgeResizeView: NSView {
             NSCursor.pop()
             cursorPushed = false
         }
+        let wasResizing = !activeEdge.isEmpty
         activeEdge = []
+        // Deferred floor: the width just changed, so the live minimum may have
+        // risen — recompute and grow now that the drag has ended.
+        if wasResizing { (panel as? OverlayPanel)?.settleAfterResize() }
     }
 
     override func mouseDragged(with event: NSEvent) {

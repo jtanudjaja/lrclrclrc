@@ -27,10 +27,15 @@ final class Appearance: ObservableObject {
     @Published var accent: AccentChoice { didSet { Settings.accent = accent.rawValue } }
     @Published var alwaysShowControls: Bool { didSet { Settings.alwaysShowControls = alwaysShowControls } }
 
+    /// Mirrors the click-through toggle (persisted by AppDelegate) so the
+    /// overlay can drop its footer reserve when controls are unreachable.
+    @Published var clickThroughActive: Bool
+
     init() {
         fontScale = Settings.fontScale
         backgroundOpacity = Settings.backgroundOpacity
         accent = AccentChoice(rawValue: Settings.accent) ?? .blue
         alwaysShowControls = Settings.alwaysShowControls
+        clickThroughActive = Settings.clickThrough
     }
 }

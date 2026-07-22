@@ -20,11 +20,11 @@ final class OverlayPanel: NSPanel {
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
-        // Freeform resize (drag any edge), bounded so it stays usable. The
-        // minimum is derived from the current text size so the lyric band always
-        // has room for at least 3 lines plus the header and footer.
-        maxSize = NSSize(width: 1400, height: 520)
-        applyMinimum(for: Settings.fontScale)
+        // Freeform resize (drag any edge). Real bounds come from the live floor
+        // (AppDelegate.refreshFloor) as soon as launch wiring completes; these
+        // are just sane placeholders for the first frame.
+        maxSize = NSSize(width: 1400, height: 560)
+        minSize = NSSize(width: 320, height: 160)
 
         self.contentView = contentView
 
@@ -71,34 +71,26 @@ final class OverlayPanel: NSPanel {
         return r
     }
 
-    /// Grow/shrink the panel by a factor, keeping the bottom-center anchored so
-    /// it doesn't wander off screen. Used by the menu's Larger/Smaller items.
-    func scaleBy(_ factor: CGFloat) {
-        var f = frame
-        let newWidth = min(max(f.width * factor, minSize.width), maxSize.width)
-        let newHeight = min(max(f.height * factor, minSize.height), maxSize.height)
-        let centerX = f.midX
-        let bottom = f.minY
-        f.size = NSSize(width: newWidth, height: newHeight)
-        f.origin.x = centerX - newWidth / 2
-        f.origin.y = bottom
-        setFrame(f, display: true, animate: true)
+    /// Called by EdgeResizeView when an edge drag ends: the deferred moment to
+    /// recompute the live floor for the new width and grow into it (mid-drag,
+    /// the stage's clipping absorbs any squeeze — spec Part 3, floor bounds).
+    var onResizeSettle: (() -> Void)?
+    func settleAfterResize() { onResizeSettle?() }
+
+    /// Apply new live-floor bounds. `growNow` also grows the window immediately
+    /// if it is below the new minimum (text-size bump, long-lined track);
+    /// omitted during a live edge drag so the app never fights the user's hand.
+    func updateSizeBounds(min newMin: CGSize, max newMax: CGSize, growNow: Bool) {
+        maxSize = NSSize(width: newMax.width, height: newMax.height)
+        minSize = NSSize(width: min(newMin.width, maxSize.width),
+                         height: min(newMin.height, maxSize.height))
+        if growNow { growToMinimum() }
     }
 
-    /// Set the resize floor from the current text size (without moving the
-    /// window). Clamped so it never exceeds the maximum.
-    func applyMinimum(for fontScale: Double) {
-        let m = OverlayMetrics.minContentSize(fontScale: fontScale)
-        minSize = NSSize(width: min(m.width, maxSize.width),
-                         height: min(m.height, maxSize.height))
-    }
-
-    /// React to a text-size change: raise/lower the floor and, if the window is
-    /// now below it, grow it to fit — keeping the bottom-centre anchored so the
-    /// card doesn't jump. This is what guarantees ≥3 lyric lines stay visible as
-    /// the user bumps the text larger.
-    func updateForFontScale(_ fontScale: Double) {
-        applyMinimum(for: fontScale)
+    /// Grow to satisfy the floor, keeping the bottom-centre anchored so the
+    /// card doesn't jump; never shrinks (the user's chosen size is respected
+    /// when the floor relaxes).
+    private func growToMinimum() {
         let f = frame
         guard f.width < minSize.width || f.height < minSize.height else { return }
         let newW = max(f.width, minSize.width)

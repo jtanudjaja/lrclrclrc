@@ -1,6 +1,18 @@
 import SwiftUI
 import AppKit
 
+/// What the overlay's stage should render — one explicit design per case, so
+/// nothing is improvised at runtime (spec Part 6).
+enum StagePhase: Equatable {
+    case idle                    // nothing playing / player closed / stopped
+    case permission              // automation access denied
+    case searching               // lyrics lookup in flight
+    case notFound                // genuine LRCLIB miss
+    case intro(countdown: Int)   // synced: >3s of instrumental before the next line
+    case synced                  // timed teleprompter
+    case unsynced                // plain lyrics, position estimated
+}
+
 /// Owns playback state and drives the overlay. AppleScript reads run on a
 /// background queue (so they never hitch the overlay animation); results are
 /// published on the main thread. A 1s timer plus the players' change
@@ -19,6 +31,9 @@ final class LyricsController: ObservableObject {
     @Published private(set) var isSynced = false
     @Published private(set) var allLines: [LrcLine] = []
     @Published private(set) var currentLineIndex = -1
+    @Published private(set) var stagePhase: StagePhase = .idle
+    /// True after ~30s with nothing playing — the overlay fades to near-transparent.
+    @Published private(set) var longIdle = false
 
     private let music: PlayerSource = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1)
     private let spotify: PlayerSource = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001)
@@ -45,6 +60,8 @@ final class LyricsController: ObservableObject {
     private var anchorPos = 0.0
     private var anchorAt = Date()
     private var playing = false
+    private var trackDuration = 0.0
+    private var lastPlayingAt = Date()
 
     private let pollQueue = DispatchQueue(label: "net.lrclrclrc.poll")
     private var pollTimer: Timer?
@@ -79,6 +96,9 @@ final class LyricsController: ObservableObject {
                 poll()
             }
         }
+        // Long-stop fade: nothing has *played* for 30s (paused counts).
+        let idleNow = !playing && Date().timeIntervalSince(lastPlayingAt) > 30
+        if idleNow != longIdle { longIdle = idleNow }
     }
 
     /// React instantly to track/state changes instead of waiting for the poll.
@@ -145,6 +165,8 @@ final class LyricsController: ObservableObject {
             status = ""
             lastTrackId = ""
             isPlaying = false
+            playing = false
+            stagePhase = .permission
             return
         case .notRunning:
             permissionNeeded = false
@@ -154,6 +176,8 @@ final class LyricsController: ObservableObject {
             status = ""
             lastTrackId = ""
             isPlaying = false
+            playing = false
+            stagePhase = .idle
             return
         case .stopped:
             permissionNeeded = false
@@ -161,6 +185,8 @@ final class LyricsController: ObservableObject {
             clearLines()
             lastTrackId = ""
             isPlaying = false
+            playing = false
+            stagePhase = .idle
             return
         case .ok:
             permissionNeeded = false
@@ -170,6 +196,11 @@ final class LyricsController: ObservableObject {
         anchorAt = Date()
         playing = np.isPlaying
         isPlaying = np.isPlaying
+        trackDuration = np.duration
+        if np.isPlaying {
+            lastPlayingAt = Date()
+            if longIdle { longIdle = false }
+        }
 
         // Namespace keys by source so Apple Music / Spotify ids never collide.
         let key = "\(kind.rawValue)::\(np.trackId)"
@@ -192,6 +223,7 @@ final class LyricsController: ObservableObject {
         }
 
         status = "looking up lyrics…"
+        stagePhase = .searching
         clearLines()
         fetchLyrics(for: key, meta: TrackMeta(
             title: np.title, artist: np.artist, album: np.album, duration: np.duration
@@ -224,6 +256,7 @@ final class LyricsController: ObservableObject {
         case .failed:
             // Don't cache a transient failure; retry so a network blip recovers.
             status = "couldn’t reach LRCLIB — retrying…"
+            stagePhase = .searching
             scheduleRetry(for: key, meta: meta)
         }
     }
@@ -250,27 +283,63 @@ final class LyricsController: ObservableObject {
             prevLine = ""
             nextLine = ""
             status = ""
+            stagePhase = .notFound
             return
         }
 
         if synced {
             status = "synced · LRCLIB"
+            stagePhase = .synced
             render(indexForTime(estimatedPosition()))
         } else {
             status = "unsynced · LRCLIB"
-            prevLine = ""
-            currentLine = lines[0].text
-            nextLine = lines.count > 1 ? lines[1].text : ""
+            stagePhase = .unsynced
+            let est = estimatedUnsyncedIndex()
+            currentIndex = est
+            render(est)
         }
     }
 
     private func tick() {
-        guard synced, !lines.isEmpty else { return }
-        let idx = indexForTime(estimatedPosition())
-        if idx != currentIndex {
-            currentIndex = idx
-            render(idx)
+        guard !lines.isEmpty else { return }
+        if synced {
+            let pos = estimatedPosition()
+            let idx = indexForTime(pos)
+            if idx != currentIndex {
+                currentIndex = idx
+                render(idx)
+            }
+            updateGapPhase(position: pos, index: idx)
+        } else {
+            // Unsynced: estimate the reading position from elapsed ÷ duration.
+            let est = estimatedUnsyncedIndex()
+            if est != currentIndex {
+                currentIndex = est
+                render(est)
+            }
         }
+    }
+
+    /// Proportional line estimate for unsynced lyrics (spec Part 6).
+    private func estimatedUnsyncedIndex() -> Int {
+        guard trackDuration > 0, !lines.isEmpty else { return 0 }
+        let fraction = max(0, min(1, estimatedPosition() / trackDuration))
+        return min(lines.count - 1, Int(fraction * Double(lines.count)))
+    }
+
+    /// Intro/instrumental detection: more than a few seconds of silence before
+    /// the next timed line → the ♪ countdown phase (spec Part 6). Only the
+    /// countdown's whole-second value is published, so this stays ~1Hz.
+    private func updateGapPhase(position: Double, index: Int) {
+        var phase: StagePhase = .synced
+        if index == -1, let first = lines.first?.time, first - position > 3 {
+            phase = .intro(countdown: max(0, Int(first - position)))
+        } else if index >= 0, index + 1 < lines.count,
+                  lines[index].text.isEmpty,
+                  let next = lines[index + 1].time, next - position > 3 {
+            phase = .intro(countdown: max(0, Int(next - position)))
+        }
+        if phase != stagePhase { stagePhase = phase }
     }
 
     private func estimatedPosition() -> Double {
@@ -320,6 +389,27 @@ final class LyricsController: ObservableObject {
         anchorAt = Date()
         resync()
         refreshSoon()
+    }
+
+    /// Seek to a lyric line: timed lines jump to their timestamp; unsynced
+    /// lines seek proportionally (line i of n → i/n × duration) — used by the
+    /// overlay's click- and scrub-to-seek.
+    func seek(toLine index: Int) {
+        guard index >= 0, index < lines.count else { return }
+        if let t = lines[index].time {
+            seek(to: max(0, t))
+        } else if trackDuration > 0 {
+            seek(to: Double(index) / Double(max(1, lines.count)) * trackDuration)
+        }
+    }
+
+    /// The timestamp a line would seek to (for the scrub chip); nil when the
+    /// track has no usable target.
+    func seekTarget(forLine index: Int) -> Double? {
+        guard index >= 0, index < lines.count else { return nil }
+        if let t = lines[index].time { return t }
+        guard trackDuration > 0 else { return nil }
+        return Double(index) / Double(max(1, lines.count)) * trackDuration
     }
 
     /// Give the player a moment to update, then re-poll so state/track catches up.

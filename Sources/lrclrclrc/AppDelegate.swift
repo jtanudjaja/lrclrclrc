@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lyricsCancellable: AnyCancellable?
     private var offsetCancellable: AnyCancellable?
     private var fontScaleCancellable: AnyCancellable?
+    private var linesCancellable: AnyCancellable?
 
     private var sourceItems: [PlayerSourceKind: NSMenuItem] = [:]
     private var offsetItem: NSMenuItem?
@@ -69,13 +70,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateOffsetTitle() }
 
-        // Enforce the "≥3 lyric lines + header + footer" floor: when the text
-        // size changes, raise the panel's minimum and grow it if needed.
+        // The live floor (spec Part 3): recompute whenever text size or the
+        // track's lyrics change, and after an edge drag ends (deferred growth).
         fontScaleCancellable = appearance.$fontScale
             .receive(on: RunLoop.main)
-            .sink { [weak self] scale in self?.panel?.updateForFontScale(scale) }
+            .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
+        linesCancellable = controller.$allLines
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
+        panel.onResizeSettle = { [weak self] in self?.refreshFloor(growNow: true) }
+        refreshFloor(growNow: true)
+
+        // The stage's "no lyrics found" state offers a Find Lyrics… shortcut.
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("lrclrclrc.openFindLyrics"), object: nil, queue: .main
+        ) { [weak self] _ in self?.openFindLyrics() }
 
         if !Settings.hasOnboarded { showOnboarding() }
+    }
+
+    /// Recompute the live minimum/maximum window size from the current text
+    /// size, width, lyrics, and click-through state (spec Part 3, rule 4).
+    private func refreshFloor(growNow: Bool) {
+        guard let panel else { return }
+        let minSize = OverlayMetrics.minContentSize(
+            fontScale: appearance.fontScale,
+            cardWidth: panel.frame.width,
+            lines: controller.allLines,
+            clickThrough: clickThrough,
+            screenHeight: (panel.screen ?? NSScreen.main)?.visibleFrame.height
+        )
+        panel.updateSizeBounds(
+            min: minSize,
+            max: OverlayMetrics.maxContentSize(fontScale: appearance.fontScale),
+            growNow: growNow
+        )
     }
 
     private func showOnboarding() {
@@ -258,6 +287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel?.ignoresMouseEvents = on
         clickThroughItem?.state = on ? .on : .off
         Settings.clickThrough = on
+        // The overlay drops its footer reserve when controls are unreachable,
+        // and the floor shrinks/grows to match.
+        appearance.clickThroughActive = on
+        refreshFloor(growNow: true)
     }
 
     // Text Larger / Smaller drive the same fontScale as the Preferences slider.
