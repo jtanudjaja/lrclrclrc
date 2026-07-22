@@ -1,0 +1,60 @@
+name: Release
+
+# Publishes a downloadable macOS DMG to the repo's Releases page.
+# Trigger by pushing a version tag (git tag v0.1.0 && git push --tags),
+# or manually from the Actions tab with a tag name.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to release (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish macOS DMG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build universal DMG
+        run: npm run dist
+        env:
+          # No Apple Developer cert: ad-hoc signed, unsigned for distribution.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" dist/*.dmg \
+            --title "lrclrclrc ${{ steps.tag.outputs.tag }}" \
+            --notes "$(cat <<'NOTES'
+          Unsigned universal build (Apple Silicon + Intel) — no Apple Developer ID.
+
+          macOS will block an unsigned app on first open. To install:
+
+          1. Open the DMG and drag **lrclrclrc** into Applications.
+          2. In Terminal, clear the download quarantine **before** opening it:
+             ```
+             xattr -cr /Applications/lrclrclrc.app
+             ```
+          3. Launch it. Grant the Automation prompt so it can read the Music app.
+
+          Prefer not to trust a random binary? Build it yourself: clone the repo,
+          `nvm use && npm install && npm run dist`.
+          NOTES
+          )"

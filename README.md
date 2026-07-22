@@ -93,6 +93,28 @@ Other build targets:
 npm run pack        # unpacked .app in dist/ (fast, for local testing)
 ```
 
+## Publish a release
+
+`.github/workflows/release.yml` builds the universal DMG and attaches it to a
+GitHub Release so others can download it. Cut one by pushing a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+(or run the **Release** workflow manually from the Actions tab and pass a tag).
+The DMG appears under the repo's **Releases**.
+
+> The build is **unsigned** (no Apple Developer ID), so anyone installing it
+> must clear the download quarantine once:
+> ```bash
+> xattr -cr /Applications/lrclrclrc.app
+> ```
+> before opening it — otherwise macOS blocks it as an unidentified/"malware"
+> app. Making double-click-clean installs for anyone requires an Apple
+> Developer account ($99/yr) for signing + notarization.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and PR to `main`:
