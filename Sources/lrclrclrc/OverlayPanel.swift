@@ -25,7 +25,37 @@ final class OverlayPanel: NSPanel {
         maxSize = NSSize(width: 1400, height: 520)
 
         self.contentView = contentView
-        positionBottomCenter()
+
+        // Restore the last position/size, else default to bottom-center.
+        if let saved = Settings.overlayFrame {
+            setFrame(sanitized(saved), display: false)
+        } else {
+            positionBottomCenter()
+        }
+
+        // Persist the frame whenever the user moves or resizes it.
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(persistFrame),
+                           name: NSWindow.didMoveNotification, object: self)
+        center.addObserver(self, selector: #selector(persistFrame),
+                           name: NSWindow.didResizeNotification, object: self)
+    }
+
+    @objc private func persistFrame() {
+        Settings.overlayFrame = frame
+    }
+
+    /// Clamp a restored frame to the size bounds and keep it on a screen.
+    private func sanitized(_ rect: NSRect) -> NSRect {
+        var r = rect
+        r.size.width = min(max(r.width, minSize.width), maxSize.width)
+        r.size.height = min(max(r.height, minSize.height), maxSize.height)
+        let visible = NSScreen.screens.contains { $0.visibleFrame.intersects(r) }
+        if !visible, let vf = NSScreen.main?.visibleFrame {
+            r.origin = NSPoint(x: vf.origin.x + (vf.width - r.width) / 2,
+                               y: vf.origin.y + 40)
+        }
+        return r
     }
 
     /// Grow/shrink the panel by a factor, keeping the bottom-center anchored so

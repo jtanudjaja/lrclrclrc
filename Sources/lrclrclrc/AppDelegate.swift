@@ -42,6 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
         controller.start()
+        restoreState()
+    }
+
+    /// Reapply persisted toggle states on launch (frame is restored by the panel).
+    private func restoreState() {
+        if Settings.clickThrough { setClickThrough(true) }
+        if Settings.menuBarLyrics {
+            setMenuBarLyrics(true, showOverlay: false)
+        } else if Settings.overlayHidden {
+            panel?.orderOut(nil)
+        }
     }
 
     private func setupStatusItem() {
@@ -87,12 +98,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if showMenuBarLyrics { setMenuBarLyrics(false, showOverlay: false) }
             panel.orderFrontRegardless()
         }
+        Settings.overlayHidden = !panel.isVisible
     }
 
     @objc private func toggleClickThrough() {
-        clickThrough.toggle()
-        panel?.ignoresMouseEvents = clickThrough
-        clickThroughItem?.state = clickThrough ? .on : .off
+        setClickThrough(!clickThrough)
+    }
+
+    private func setClickThrough(_ on: Bool) {
+        clickThrough = on
+        panel?.ignoresMouseEvents = on
+        clickThroughItem?.state = on ? .on : .off
+        Settings.clickThrough = on
     }
 
     @objc private func enlarge() { panel?.scaleBy(1.15) }
@@ -127,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setMenuBarLyrics(_ on: Bool, showOverlay: Bool) {
         showMenuBarLyrics = on
         menuBarLyricsItem?.state = on ? .on : .off
+        Settings.menuBarLyrics = on
 
         if on {
             panel?.orderOut(nil)
@@ -139,7 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lyricsCancellable = nil
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.image = statusIcon
-            if showOverlay { panel?.orderFrontRegardless() }
+            if showOverlay {
+                panel?.orderFrontRegardless()
+                Settings.overlayHidden = false
+            }
         }
     }
 

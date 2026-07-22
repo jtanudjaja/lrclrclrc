@@ -63,6 +63,9 @@ you can show/hide the overlay, toggle click-through, and quit.
   the overlay (the ♫ icon is hidden to make room). Mutually exclusive with the
   overlay.
 
+The overlay's **position and size** and these toggle states are remembered
+between launches (stored in `UserDefaults`), so you set things up once.
+
 ### Open in Xcode instead
 
 `File → Open…` and pick `Package.swift`, then Run. (Running via
