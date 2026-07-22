@@ -130,14 +130,18 @@ final class EdgeResizeView: NSView {
     }
 
     // Cursor rects only activate for the *key* window, and this panel can never
-    // become key (it must not steal focus) — so the resize cursors are driven
-    // by an always-active tracking area instead.
+    // become key (it must not steal focus). A one-shot cursorUpdate loses to
+    // the SwiftUI hosting view's own cursor management too — so the resize
+    // cursor is re-asserted on *every* mouse move over the edge band via an
+    // always-active tracking area. Continuous set() wins the fight.
+    private var edgeCursorActive = false
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: .zero,
-            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
             owner: self, userInfo: nil
         ))
     }
@@ -148,13 +152,29 @@ final class EdgeResizeView: NSView {
         updateTrackingAreas()
     }
 
-    override func cursorUpdate(with event: NSEvent) {
+    override func mouseMoved(with event: NSEvent) { refreshCursor(for: event) }
+    override func mouseEntered(with event: NSEvent) { refreshCursor(for: event) }
+    override func cursorUpdate(with event: NSEvent) { refreshCursor(for: event) }
+
+    override func mouseExited(with event: NSEvent) {
+        if edgeCursorActive {
+            NSCursor.arrow.set()
+            edgeCursorActive = false
+        }
+    }
+
+    private func refreshCursor(for event: NSEvent) {
+        guard activeEdge.isEmpty else { return } // mid-drag: the pushed cursor rules
         let local = convert(event.locationInWindow, from: nil)
         let e = edge(at: local)
         if e.isEmpty {
-            super.cursorUpdate(with: event)
+            if edgeCursorActive {
+                NSCursor.arrow.set()
+                edgeCursorActive = false
+            }
         } else {
             cursor(for: e).set()
+            edgeCursorActive = true
         }
     }
 
