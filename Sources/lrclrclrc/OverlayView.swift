@@ -83,7 +83,7 @@ struct OverlayView: View {
         .frame(width: size.width, height: size.height)
         .background { backgroundLayer(radius: radius) }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .opacity(controller.longIdle && !hovered ? 0.25 : 1)
+        .opacity(restingOpacity(clickThrough: clickThrough))
         .animation(.easeInOut(duration: 0.28), value: hovered)
         .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
         .onHover { hovered = $0 }
@@ -99,6 +99,16 @@ struct OverlayView: View {
                 NSCursor.arrow.set()
             }
         }
+    }
+
+    /// FaceTime-style resting translucency: the whole card sits at a quiet 60%
+    /// until hovered, and 25% after a long stop. Click-through is exempt —
+    /// hover can't happen there, and readable lyrics are the point.
+    private func restingOpacity(clickThrough: Bool) -> Double {
+        if hovered { return 1 }
+        if controller.longIdle { return 0.25 }
+        if clickThrough { return 1 }
+        return 0.6
     }
 
     // MARK: - Header (measured, never truncated, never resizes the window)
