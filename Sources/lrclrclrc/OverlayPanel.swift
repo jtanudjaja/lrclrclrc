@@ -1,10 +1,10 @@
 import AppKit
 
 /// The transparent lyric-card window. Interactive by default: an ordinary,
-/// activatable, normally-managed window, so the system's native resize
-/// machinery — cursors included — fully applies. While click-through is on it
-/// switches to the passive overlay profile (always-on-top, non-activating,
-/// mouse-transparent) and becomes pure scenery.
+/// activatable window at FaceTime-style floating level — above normal windows,
+/// yet the system's native resize machinery (cursors included) fully applies.
+/// While click-through is on it switches to the passive overlay profile
+/// (screen-saver level, non-activating, mouse-transparent): pure scenery.
 final class OverlayPanel: NSPanel {
     init(contentView: NSView) {
         // A *titled* window with invisible chrome, not a borderless one: the
@@ -69,11 +69,11 @@ final class OverlayPanel: NSPanel {
 
     // MARK: - Interactive vs. click-through profile
 
-    /// Interactive (default): an ordinary, activatable, normally-managed
-    /// window. This is what makes resizing fully native — AppKit's cursor
-    /// display and the system's background-window resize affordance only run
-    /// for windows the window manager treats as regular. Accepted costs: the
-    /// card can be covered by other windows, activates on click, and appears
+    /// Interactive (default): an ordinary, activatable window at .floating
+    /// level — the FaceTime model: stays above normal windows but is still a
+    /// real, focusable, natively-resizable window. Activatability is what
+    /// makes resizing fully native (AppKit's cursor display and the system's
+    /// resize affordances). Accepted costs: activates on click and appears
     /// in ⌘Tab/Mission Control.
     ///
     /// Passive (click-through): the classic overlay — floats over everything
@@ -86,7 +86,7 @@ final class OverlayPanel: NSPanel {
         isPassive = passive
         ignoresMouseEvents = passive
         isFloatingPanel = passive
-        level = passive ? .screenSaver : .normal
+        level = passive ? .screenSaver : .floating
         collectionBehavior = passive
             ? [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             : []
