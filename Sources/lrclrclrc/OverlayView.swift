@@ -199,7 +199,10 @@ struct OverlayView: View {
         case .notFound:
             notFoundStage(fs)
         case .intro(let countdown, let first):
-            introStage(fs, countdown: countdown, first: first)
+            // Not a separate screen: the countdown lives in the hero slot of
+            // the normal teleprompter, with the full lyric context below —
+            // scrub or click a line to skip the instrumental.
+            teleprompter(fs: fs, stage: stage, softer: false, intro: (countdown, first))
         case .synced:
             teleprompter(fs: fs, stage: stage, softer: false)
         case .unsynced:
@@ -274,31 +277,25 @@ struct OverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func introStage(_ fs: CGFloat, countdown: Int, first: Bool) -> some View {
-        VStack(spacing: 6 * fs) {
-            HStack(spacing: 5 * fs) {
-                Text("♪")
-                    .font(.system(size: 15 * fs, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
-                Circle().fill(.white.opacity(0.95)).frame(width: 4 * fs, height: 4 * fs)
-                Circle().fill(.white.opacity(0.65)).frame(width: 4 * fs, height: 4 * fs)
-                Circle().fill(.white.opacity(0.35)).frame(width: 4 * fs, height: 4 * fs)
-            }
+    /// The intro/instrumental indicator as a single hero-slot row: ♪ + fading
+    /// dots + countdown. Rendered inside the teleprompter, never as its own
+    /// screen — the surrounding lines stay visible and seekable.
+    private func introSlot(countdown: Int, first: Bool, fs: CGFloat) -> some View {
+        HStack(spacing: 5 * fs) {
+            Text("♪")
+                .font(.system(size: 16 * fs, weight: .bold))
+                .foregroundStyle(.white.opacity(0.9))
+                .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
+            Circle().fill(.white.opacity(0.95)).frame(width: 4 * fs, height: 4 * fs)
+            Circle().fill(.white.opacity(0.65)).frame(width: 4 * fs, height: 4 * fs)
+            Circle().fill(.white.opacity(0.35)).frame(width: 4 * fs, height: 4 * fs)
             Text(countdownLabel(countdown, first: first))
                 .font(.system(size: 10 * fs, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.4))
-            if !controller.nextLine.isEmpty {
-                Text(controller.nextLine)
-                    .font(.system(size: 15 * fs))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4 * fs)
-            }
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.leading, 3 * fs)
         }
         .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
     }
 
     private func countdownLabel(_ seconds: Int, first: Bool) -> String {
@@ -314,17 +311,22 @@ struct OverlayView: View {
         let isCredit: Bool
     }
 
-    private func teleprompter(fs: CGFloat, stage: CGSize, softer: Bool) -> some View {
+    private func teleprompter(fs: CGFloat, stage: CGSize, softer: Bool,
+                              intro: (countdown: Int, first: Bool)? = nil) -> some View {
         let lines = controller.allLines
         let measureW = min(stage.width, 450 * fs)
         let step = OverlayMetrics.lineUnit * fs * 1.15
-        let playing = max(0, controller.currentLineIndex)
+        let playingRaw = controller.currentLineIndex
+        let playing = max(0, playingRaw)
+        // Before the first line the countdown centers as a *virtual* slot
+        // (index -1) with the whole song laid out beneath it.
+        let baseFocus = (intro != nil && playingRaw < 0) ? -1 : playing
 
         // Scrub: whole steps move the focus candidate; the remainder slides the
         // column 1:1 under the cursor, with rubber resistance past the ends.
         let rawShift = scrubbing ? Int((scrubTranslation / step).rounded()) : 0
         let unclamped = scrubAnchor - rawShift
-        let focus = scrubbing ? min(max(unclamped, 0), max(0, lines.count - 1)) : playing
+        let focus = scrubbing ? min(max(unclamped, 0), max(0, lines.count - 1)) : baseFocus
         var residual: CGFloat = 0
         if scrubbing {
             residual = scrubTranslation - CGFloat(scrubAnchor - focus) * step
@@ -335,7 +337,8 @@ struct OverlayView: View {
 
         return ZStack {
             ForEach(slots) { slot in
-                slotView(slot, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs)
+                slotView(slot, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs,
+                         intro: scrubbing ? nil : intro)
                     .frame(width: measureW)
                     .offset(y: slot.y + residual)
             }
@@ -352,15 +355,18 @@ struct OverlayView: View {
     /// (rule 5), plus the credit slot after the final line.
     private func computeSlots(lines: [LrcLine], focus: Int, stage: CGSize, measureW: CGFloat, fs: CGFloat) -> [Slot] {
         guard !lines.isEmpty else { return [] }
-        let f = min(max(focus, 0), lines.count - 1)
+        // focus == -1 is the virtual intro slot: nothing above it (the upward
+        // walk starts at -2 and skips), the whole song below it.
+        let f = focus < 0 ? -1 : min(focus, lines.count - 1)
         // Spacing loosens slightly as the stage grows (theater feel).
         let gap = (6 + min(2.5, max(0, stage.height / fs - 260) * 0.02)) * fs
         let heroFont = OverlayMetrics.heroFont(fs: fs)
         let lineFont = OverlayMetrics.lineFont(fs: fs)
         let heroSize = 22 * fs
         let lineSize = 15 * fs
-        let heroH = heights.height(lines[f].text, fontSize: heroSize, width: measureW) {
-            OverlayMetrics.textHeight(lines[f].text, font: heroFont, width: measureW)
+        let heroText = f >= 0 ? lines[f].text : "♪"
+        let heroH = heights.height(heroText, fontSize: heroSize, width: measureW) {
+            OverlayMetrics.textHeight(heroText, font: heroFont, width: measureW)
         }
         let budget = max(0, (stage.height - heroH) / 2)
 
@@ -408,12 +414,17 @@ struct OverlayView: View {
     }
 
     @ViewBuilder
-    private func slotView(_ slot: Slot, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat) -> some View {
+    private func slotView(_ slot: Slot, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat,
+                          intro: (countdown: Int, first: Bool)?) -> some View {
         if slot.isCredit {
             Text(controller.status)
                 .font(.system(size: 9.5 * fs, weight: .medium))
                 .tracking(0.4 * fs)
                 .foregroundStyle(.white.opacity(0.4))
+        } else if let intro, slot.id == focus {
+            // Intro / mid-song instrumental: the countdown occupies the hero
+            // slot; the surrounding lines stay visible and seekable.
+            introSlot(countdown: intro.countdown, first: intro.first, fs: fs)
         } else {
             lyricLine(slot.id, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs)
         }
