@@ -71,6 +71,8 @@ struct OverlayView: View {
         let oneRow = controller.artist.isEmpty || OverlayMetrics.headerFitsOneRow(
             title: controller.title, artist: controller.artist, fs: fs, cardWidth: cardWidth
         )
+        // Empty states dim the header — the stage carries the message.
+        let dimmed = controller.stagePhase == .idle || controller.stagePhase == .permission
         Group {
             if oneRow {
                 headerOneRow(fs: fs)
@@ -78,6 +80,7 @@ struct OverlayView: View {
                 headerSplit(fs: fs)
             }
         }
+        .opacity(dimmed ? 0.55 : 1)
         .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
     }
 
@@ -140,8 +143,8 @@ struct OverlayView: View {
             searchingStage(fs)
         case .notFound:
             notFoundStage(fs)
-        case .intro(let countdown):
-            introStage(fs, countdown: countdown)
+        case .intro(let countdown, let first):
+            introStage(fs, countdown: countdown, first: first)
         case .synced:
             teleprompter(fs: fs, stage: stage, softer: false)
         case .unsynced:
@@ -216,13 +219,18 @@ struct OverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func introStage(_ fs: CGFloat, countdown: Int) -> some View {
+    private func introStage(_ fs: CGFloat, countdown: Int, first: Bool) -> some View {
         VStack(spacing: 6 * fs) {
-            Text("♪ ♪ ♪")
-                .font(.system(size: 15 * fs, weight: .bold))
-                .foregroundStyle(.white.opacity(0.75))
-                .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
-            Text(countdownLabel(countdown))
+            HStack(spacing: 5 * fs) {
+                Text("♪")
+                    .font(.system(size: 15 * fs, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
+                Circle().fill(.white.opacity(0.95)).frame(width: 4 * fs, height: 4 * fs)
+                Circle().fill(.white.opacity(0.65)).frame(width: 4 * fs, height: 4 * fs)
+                Circle().fill(.white.opacity(0.35)).frame(width: 4 * fs, height: 4 * fs)
+            }
+            Text(countdownLabel(countdown, first: first))
                 .font(.system(size: 10 * fs, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.4))
             if !controller.nextLine.isEmpty {
@@ -238,9 +246,9 @@ struct OverlayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func countdownLabel(_ seconds: Int) -> String {
+    private func countdownLabel(_ seconds: Int, first: Bool) -> String {
         let s = max(0, seconds)
-        return String(format: "next line in %d:%02d", s / 60, s % 60)
+        return String(format: "%@ line in %d:%02d", first ? "first" : "next", s / 60, s % 60)
     }
 
     // MARK: - Teleprompter (pixel budget around a pinned center)
@@ -290,7 +298,8 @@ struct OverlayView: View {
     private func computeSlots(lines: [LrcLine], focus: Int, stage: CGSize, measureW: CGFloat, fs: CGFloat) -> [Slot] {
         guard !lines.isEmpty else { return [] }
         let f = min(max(focus, 0), lines.count - 1)
-        let gap = 6 * fs
+        // Spacing loosens slightly as the stage grows (theater feel).
+        let gap = (6 + min(2.5, max(0, stage.height / fs - 260) * 0.02)) * fs
         let heroFont = OverlayMetrics.heroFont(fs: fs)
         let lineFont = OverlayMetrics.lineFont(fs: fs)
         let heroH = OverlayMetrics.textHeight(lines[f].text, font: heroFont, width: measureW)
@@ -345,14 +354,18 @@ struct OverlayView: View {
     private func lyricLine(_ index: Int, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat) -> some View {
         let isFocus = index == focus
         let distance = Double(abs(index - focus))
-        let opacity = isFocus ? 1.0 : max(0.16, 0.62 - distance * 0.15)
+        // Unsynced ("softer"): the estimated line keeps the same size as its
+        // neighbours — just brighter and semibold, no glow — honest about the
+        // position being approximate.
+        let opacity = isFocus ? (softer ? 0.95 : 1.0) : max(0.16, 0.62 - distance * 0.15)
+        let size: CGFloat = (isFocus && !softer) ? 22 * fs : 15 * fs
+        let weight: Font.Weight = isFocus ? (softer ? .semibold : .bold) : .regular
         let raw = lines[index].text
         let showMarker = scrubbing && index == playing && !isFocus
 
         return HStack(spacing: 6 * fs) {
             Text(raw.isEmpty ? "♪" : raw)
-                .font(.system(size: isFocus ? 22 * fs : 15 * fs,
-                              weight: isFocus ? (softer ? .semibold : .bold) : .regular))
+                .font(.system(size: size, weight: weight))
                 .foregroundStyle(.white.opacity(opacity))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
@@ -363,6 +376,9 @@ struct OverlayView: View {
                 Circle()
                     .fill(appearance.accent.color.opacity(0.9))
                     .frame(width: 4 * fs, height: 4 * fs)
+                Text("playing")
+                    .font(.system(size: 7.5 * fs, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
             }
             if scrubbing, isFocus, let target = controller.seekTarget(forLine: index) {
                 timeChip(target, fs: fs)

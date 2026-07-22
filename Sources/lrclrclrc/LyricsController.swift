@@ -8,7 +8,7 @@ enum StagePhase: Equatable {
     case permission              // automation access denied
     case searching               // lyrics lookup in flight
     case notFound                // genuine LRCLIB miss
-    case intro(countdown: Int)   // synced: >3s of instrumental before the next line
+    case intro(countdown: Int, first: Bool) // synced: instrumental gap; first = before line 1
     case synced                  // timed teleprompter
     case unsynced                // plain lyrics, position estimated
 }
@@ -157,10 +157,12 @@ final class LyricsController: ObservableObject {
         if isActive { idleTickCounter = 0 }
 
         switch np.state {
+        // Empty-state headers stay short (the stage explains the situation);
+        // the overlay dims them per the idle designs.
         case .permissionDenied:
             permissionNeeded = true
             title = "lrclrclrc"
-            artist = "Automation permission needed"
+            artist = ""
             clearLines()
             status = ""
             lastTrackId = ""
@@ -170,8 +172,8 @@ final class LyricsController: ObservableObject {
             return
         case .notRunning:
             permissionNeeded = false
-            title = "lrclrclrc"
-            artist = "No music playing"
+            title = "Nothing playing"
+            artist = ""
             clearLines()
             status = ""
             lastTrackId = ""
@@ -181,7 +183,8 @@ final class LyricsController: ObservableObject {
             return
         case .stopped:
             permissionNeeded = false
-            artist = "Nothing playing"
+            title = "Nothing playing"
+            artist = ""
             clearLines()
             lastTrackId = ""
             isPlaying = false
@@ -288,11 +291,11 @@ final class LyricsController: ObservableObject {
         }
 
         if synced {
-            status = "synced · LRCLIB"
+            status = "synced · lyrics from LRCLIB"
             stagePhase = .synced
             render(indexForTime(estimatedPosition()))
         } else {
-            status = "unsynced · LRCLIB"
+            status = "unsynced · position estimated"
             stagePhase = .unsynced
             let est = estimatedUnsyncedIndex()
             currentIndex = est
@@ -333,11 +336,11 @@ final class LyricsController: ObservableObject {
     private func updateGapPhase(position: Double, index: Int) {
         var phase: StagePhase = .synced
         if index == -1, let first = lines.first?.time, first - position > 3 {
-            phase = .intro(countdown: max(0, Int(first - position)))
+            phase = .intro(countdown: max(0, Int(first - position)), first: true)
         } else if index >= 0, index + 1 < lines.count,
                   lines[index].text.isEmpty,
                   let next = lines[index + 1].time, next - position > 3 {
-            phase = .intro(countdown: max(0, Int(next - position)))
+            phase = .intro(countdown: max(0, Int(next - position)), first: false)
         }
         if phase != stagePhase { stagePhase = phase }
     }
