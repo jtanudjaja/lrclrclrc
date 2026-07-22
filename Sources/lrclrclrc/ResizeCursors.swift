@@ -6,33 +6,14 @@ import AppKit
 /// channel proven to win against the hosting view's own cursor management.
 /// System frame-resize cursors on macOS 15+; drawn equivalents on 13–14.
 enum ResizeCursors {
-    static let horizontal: NSCursor = {
-        if #available(macOS 15.0, *) {
-            return .frameResize(position: .left, directions: [.inward, .outward])
-        }
-        return .resizeLeftRight
-    }()
-
-    static let vertical: NSCursor = {
-        if #available(macOS 15.0, *) {
-            return .frameResize(position: .top, directions: [.inward, .outward])
-        }
-        return .resizeUpDown
-    }()
-
-    static let diagonalNWSE: NSCursor = {
-        if #available(macOS 15.0, *) {
-            return .frameResize(position: .topLeft, directions: [.inward, .outward])
-        }
-        return drawnDiagonal(nwse: true)
-    }()
-
-    static let diagonalNESW: NSCursor = {
-        if #available(macOS 15.0, *) {
-            return .frameResize(position: .topRight, directions: [.inward, .outward])
-        }
-        return drawnDiagonal(nwse: false)
-    }()
+    // Deliberately NOT NSCursor.frameResize(...): those are *semantic*
+    // cursors that macOS renders only inside genuine window-frame resize
+    // tracking — set anywhere else they silently display as the arrow (the
+    // "cursor never changes" mystery). These classics render unconditionally.
+    static let horizontal: NSCursor = .resizeLeftRight
+    static let vertical: NSCursor = .resizeUpDown
+    static let diagonalNWSE: NSCursor = drawnDiagonal(nwse: true)
+    static let diagonalNESW: NSCursor = drawnDiagonal(nwse: false)
 
     /// Cursor for a point in SwiftUI-local (top-left origin) coordinates, or
     /// nil when the point isn't in the edge band.
