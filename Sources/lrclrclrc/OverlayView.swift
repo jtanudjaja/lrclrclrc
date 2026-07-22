@@ -602,8 +602,13 @@ struct OverlayView: View {
     private func hoverSurface(radius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return ZStack {
+            // Translucency knob: .hudWindow is a dense material, so at full
+            // strength it reads as a solid panel. Backing it off lets the apps
+            // behind the card show through for the glass look, while the scrim
+            // below supplies the dark base.
             HoverGlass()
                 .clipShape(shape)
+                .opacity(0.6)
             shape.strokeBorder(
                 LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
                                startPoint: .top, endPoint: .center),
