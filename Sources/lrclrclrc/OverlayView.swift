@@ -589,10 +589,13 @@ struct OverlayView: View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         #if compiler(>=6.2) // Xcode 26 toolchain (macOS 26 SDK)
         if #available(macOS 26.0, *) {
-            // A whisper of tint for text contrast — heavier tint plus the
-            // scrim read far less transparent than the old material.
+            // The *clear* Liquid Glass variant: .regular has an intrinsic
+            // frost density no tint tweak can reduce, and it read far more
+            // opaque than the old half-strength material. Clear keeps the
+            // refraction and edge highlight at PiP-like transparency; the
+            // scrim (Background-opacity knob) supplies any extra contrast.
             shape.fill(Color.clear)
-                .glassEffect(.regular.tint(.black.opacity(0.08)), in: shape)
+                .glassEffect(.clear, in: shape)
         } else {
             legacyHoverSurface(shape)
         }
