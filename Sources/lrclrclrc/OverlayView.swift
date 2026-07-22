@@ -558,18 +558,40 @@ struct OverlayView: View {
         ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(.black.opacity(hovered ? min(0.5, appearance.backgroundOpacity + 0.22) : appearance.backgroundOpacity))
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .opacity(hovered ? 0.5 : 0)
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
-                                   startPoint: .top, endPoint: .center),
-                    lineWidth: 1
-                )
+            hoverSurface(radius: radius)
                 .opacity(hovered ? 1 : 0)
         }
         .environment(\.colorScheme, .dark)
         .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22, y: 9)
+    }
+
+    /// The hover face's surface: real Liquid Glass on macOS 26 (its own edge
+    /// highlight and refraction — no hand-drawn sheen needed), the classic
+    /// thin-material + sheen on 13–15. The idle face stays glass-free either
+    /// way: glass has too much presence for the resting state.
+    @ViewBuilder
+    private func hoverSurface(radius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        #if compiler(>=6.2) // Xcode 26 toolchain (macOS 26 SDK)
+        if #available(macOS 26.0, *) {
+            shape.fill(Color.clear)
+                .glassEffect(.regular.tint(.black.opacity(0.25)), in: shape)
+        } else {
+            legacyHoverSurface(shape)
+        }
+        #else
+        legacyHoverSurface(shape)
+        #endif
+    }
+
+    private func legacyHoverSurface(_ shape: RoundedRectangle) -> some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial).opacity(0.5)
+            shape.strokeBorder(
+                LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
+                               startPoint: .top, endPoint: .center),
+                lineWidth: 1
+            )
+        }
     }
 }
