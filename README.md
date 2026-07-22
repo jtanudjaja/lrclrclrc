@@ -30,7 +30,11 @@ Three moving parts, matching the three hard problems of a lyrics overlay:
 
 ## Run it
 
+Use **Node 22 LTS** (an `.nvmrc` pins it). Bleeding-edge/odd Node releases can
+break Electron's install step, so with [nvm](https://github.com/nvm-sh/nvm):
+
 ```bash
+nvm use          # reads .nvmrc → Node 22 (run `nvm install 22` first time)
 npm install
 npm start
 ```
