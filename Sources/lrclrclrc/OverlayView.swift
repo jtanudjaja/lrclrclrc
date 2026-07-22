@@ -87,17 +87,20 @@ struct OverlayView: View {
         .animation(.easeInOut(duration: 0.28), value: hovered)
         .animation(.easeInOut(duration: 1.2), value: controller.longIdle)
         .onHover { hovered = $0 }
-        // Cursor authority, run inside SwiftUI's own hover pipeline — the one
-        // channel proven to beat the hosting view's built-in handling (it's
-        // what killed the I-beam). Resize arrows in the edge band, plain
-        // arrow over the interior. The *resizing itself* is the titled
-        // window's native machinery; only the cursor display is ours.
+        // Cursor discipline via SwiftUI's own hover pipeline (the channel
+        // that killed the I-beam): plain arrow over the interior, hands OFF
+        // near the edges. The window is ordinary and activatable, so the
+        // titled frame paints the native resize arrows at and just outside
+        // the boundary — setting our own cursor there would only fight it.
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {
             case .active(let point):
-                (ResizeCursors.cursor(at: point, in: size) ?? .arrow).set()
+                let band: CGFloat = 8
+                let nearEdge = point.x <= band || point.y <= band
+                    || point.x >= size.width - band || point.y >= size.height - band
+                if !nearEdge { NSCursor.arrow.set() }
             case .ended:
-                NSCursor.arrow.set()
+                break // leaving the card — the system owns the cursor
             }
         }
     }
@@ -573,11 +576,19 @@ struct OverlayView: View {
 
     // MARK: - Chrome
 
+    /// True when the Liquid Glass hover surface is in play (macOS 26 + SDK).
+    private var glassActive: Bool {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) { return true }
+        #endif
+        return false
+    }
+
     private func backgroundLayer(radius: CGFloat) -> some View {
         // The Background-opacity knob drives the *idle* face only. Hover uses a
-        // fixed designed darkness; the always-active vibrancy material carries
-        // most of the presence, so the scrim behind it stays thin.
-        let hoverScrim = 0.16
+        // fixed designed darkness: with Liquid Glass the glass carries the
+        // presence (thin scrim); the legacy material needs more help.
+        let hoverScrim = glassActive ? 0.14 : 0.30
         return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(.black.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))
@@ -588,51 +599,37 @@ struct OverlayView: View {
         .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22, y: 9)
     }
 
-    /// The hover face's surface. An always-active vibrancy material plus a
-    /// thin top sheen. SwiftUI's `.glassEffect` / `.ultraThinMaterial` render
-    /// their *inactive* appearance — the flat opaque grey — whenever the
-    /// overlay window isn't key, which it never is while you work in another
-    /// app; that was the grey-on-hover / glass-on-click split. `HoverGlass`
-    /// pins `NSVisualEffectView.state = .active`, so it keeps its lively look
-    /// regardless of which app is frontmost. The idle face stays material-free
-    /// either way: too much presence for the resting state.
+    /// The hover face's surface: real Liquid Glass on macOS 26 (its own edge
+    /// highlight and refraction — no hand-drawn sheen needed), the classic
+    /// thin-material + sheen on 13–15. The idle face stays glass-free either
+    /// way: glass has too much presence for the resting state.
+    @ViewBuilder
     private func hoverSurface(radius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-        return ZStack {
-            // Translucency knob: .hudWindow is a dense material, so at full
-            // strength it reads as a solid panel. Backing it off lets the apps
-            // behind the card show through for the glass look, while the scrim
-            // below supplies the dark base.
-            HoverGlass()
-                .clipShape(shape)
-                .opacity(0.6)
+        #if compiler(>=6.2) // Xcode 26 toolchain (macOS 26 SDK)
+        if #available(macOS 26.0, *) {
+            // The *regular* Liquid Glass variant: its intrinsic frost gives
+            // the hover face real substance — the clear variant read too
+            // transparent. Regular carries the presence on its own, so the
+            // scrim behind it stays thin.
+            shape.fill(Color.clear)
+                .glassEffect(.regular, in: shape)
+        } else {
+            legacyHoverSurface(shape)
+        }
+        #else
+        legacyHoverSurface(shape)
+        #endif
+    }
+
+    private func legacyHoverSurface(_ shape: RoundedRectangle) -> some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial).opacity(0.5)
             shape.strokeBorder(
                 LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
                                startPoint: .top, endPoint: .center),
                 lineWidth: 1
             )
         }
-    }
-}
-
-/// A vibrancy surface that never greys out when its window loses key focus.
-/// SwiftUI materials follow window-active state and fall back to a flat grey
-/// when another app is frontmost; `NSVisualEffectView.state = .active` pins
-/// the lively translucent look on unconditionally, which is exactly what the
-/// always-on-top overlay needs (it's rarely the key window). `.behindWindow`
-/// blending is what samples the apps behind the card for the glass look; the
-/// dark appearance keeps it in the card's designed dark palette.
-private struct HoverGlass: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.appearance = NSAppearance(named: .darkAqua)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.state = .active
     }
 }
