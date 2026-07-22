@@ -11,6 +11,7 @@ final class LyricsController: ObservableObject {
     @Published var currentLine = ""
     @Published var nextLine = ""
     @Published var status = ""
+    @Published var isPlaying = false
 
     private let watcher = MusicWatcher()
     private let overrides = OverrideStore()
@@ -51,11 +52,13 @@ final class LyricsController: ObservableObject {
             clearLines()
             status = ""
             lastTrackId = ""
+            isPlaying = false
             return
         case .stopped:
             artist = "Nothing playing"
             clearLines()
             lastTrackId = ""
+            isPlaying = false
             return
         case .ok:
             break
@@ -64,6 +67,7 @@ final class LyricsController: ObservableObject {
         anchorPos = np.position
         anchorAt = Date()
         playing = np.isPlaying
+        isPlaying = np.isPlaying
 
         guard np.trackId != lastTrackId else { return } // same song
         lastTrackId = np.trackId
@@ -124,6 +128,19 @@ final class LyricsController: ObservableObject {
             prevLine = ""
             currentLine = lines[0].text
             nextLine = lines.count > 1 ? lines[1].text : ""
+        }
+    }
+
+    // MARK: - Playback controls
+
+    func playPause() { watcher.playPause(); refreshSoon() }
+    func nextTrack() { watcher.nextTrack(); refreshSoon() }
+    func previousTrack() { watcher.previousTrack(); refreshSoon() }
+
+    /// Give Music a moment to update, then re-poll so state/track catches up.
+    private func refreshSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.poll()
         }
     }
 

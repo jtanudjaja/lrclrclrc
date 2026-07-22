@@ -71,4 +71,16 @@ final class MusicWatcher {
         np.trackId = parts[7].isEmpty ? "\(parts[2])::\(parts[1])" : parts[7]
         return np
     }
+
+    // MARK: - Playback commands
+
+    func playPause() { run("playpause") }
+    func nextTrack() { run("next track") }
+    func previousTrack() { run("previous track") }
+
+    private func run(_ command: String) {
+        guard let script = NSAppleScript(source: "tell application \"Music\" to \(command)") else { return }
+        var err: NSDictionary?
+        script.executeAndReturnError(&err)
+    }
 }

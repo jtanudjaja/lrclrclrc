@@ -54,7 +54,8 @@ you can show/hide the overlay, toggle click-through, and quit.
 ### Controls (menu-bar ♫ icon)
 
 - **Show / Hide Overlay** — toggle the floating card. **Drag** the card to move
-  it; drag its edges/corners to resize (the lyrics scale with it).
+  it; drag its edges/corners to resize (the lyrics scale with it). Hover the
+  card to reveal **⏮ ⏯ ⏭ playback controls** (when the window is big enough).
 - **Find Lyrics…** — when a song has no lyrics, open lrclib.net to look it up,
   then paste the `.lrc` (timed) or plain text; it's remembered for that track.
 - **Larger / Smaller** — step the overlay size.
