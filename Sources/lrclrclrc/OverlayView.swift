@@ -101,14 +101,14 @@ struct OverlayView: View {
         }
     }
 
-    /// FaceTime-style resting translucency: the whole card sits at a quiet 60%
-    /// until hovered, and 25% after a long stop. Click-through is exempt —
-    /// hover can't happen there, and readable lyrics are the point.
+    /// Lyrics stay at full presence while music plays — a whole-card resting
+    /// fade muted the product itself (the text), which defeated the point.
+    /// The recede-when-ignored behaviour lives in the chrome (hidden idle) and
+    /// in the long-stop fade: 25% after ~30s of nothing playing.
     private func restingOpacity(clickThrough: Bool) -> Double {
         if hovered { return 1 }
         if controller.longIdle { return 0.25 }
-        if clickThrough { return 1 }
-        return 0.6
+        return 1
     }
 
     // MARK: - Header (measured, never truncated, never resizes the window)
