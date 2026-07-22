@@ -16,13 +16,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarLyricsItem: NSMenuItem?
     private var lyricsCancellable: AnyCancellable?
 
-    // Marquee state for scrolling long lines across the menu bar.
-    private var marqueeTimer: Timer?
-    private var marqueeChars: [Character] = []
-    private var marqueeOffset = 0
-    private let marqueeWidth = 32                 // visible characters while scrolling
-    private let marqueeSeparator = "     •     "  // gap between the end and the wrapped start
-
     private let statusIcon = NSImage(
         systemSymbolName: "music.note.list",
         accessibilityDescription: "lrclrclrc"
@@ -144,7 +137,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             lyricsCancellable?.cancel()
             lyricsCancellable = nil
-            stopMarquee()
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.image = statusIcon
             if showOverlay { panel?.orderFrontRegardless() }
@@ -154,64 +146,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateMenuBarText(_ line: String) {
         guard showMenuBarLyrics, let button = statusItem?.button else { return }
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-
         if trimmed.isEmpty {
-            stopMarquee()
             button.image = statusIcon
-            setMenuBarTitle("", monospaced: false)
-        } else if trimmed.count <= marqueeWidth {
-            stopMarquee()
-            button.image = nil
-            setMenuBarTitle(trimmed, monospaced: false)
+            button.attributedTitle = NSAttributedString(string: "")
         } else {
+            // Hide the icon to give the text the whole width; a smaller font
+            // fits more before macOS truncates it.
             button.image = nil
-            startMarquee(with: trimmed) // scroll instead of truncating
+            let maxLength = 72
+            let shown = trimmed.count > maxLength
+                ? String(trimmed.prefix(maxLength - 1)) + "…"
+                : trimmed
+            button.attributedTitle = NSAttributedString(
+                string: shown,
+                attributes: [.font: NSFont.systemFont(ofSize: 12)]
+            )
         }
-    }
-
-    private func setMenuBarTitle(_ string: String, monospaced: Bool) {
-        // Monospaced while scrolling so the visible window doesn't jitter as
-        // variable-width glyphs slide through it.
-        let font = monospaced
-            ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-            : NSFont.systemFont(ofSize: 12)
-        statusItem?.button?.attributedTitle = NSAttributedString(
-            string: string, attributes: [.font: font]
-        )
-    }
-
-    private func startMarquee(with text: String) {
-        marqueeChars = Array(text + marqueeSeparator)
-        marqueeOffset = 0
-        renderMarquee()
-        if marqueeTimer == nil {
-            marqueeTimer = Timer.scheduledTimer(withTimeInterval: 0.28, repeats: true) { [weak self] _ in
-                self?.advanceMarquee()
-            }
-        }
-    }
-
-    private func advanceMarquee() {
-        guard !marqueeChars.isEmpty else { return }
-        marqueeOffset = (marqueeOffset + 1) % marqueeChars.count
-        renderMarquee()
-    }
-
-    private func renderMarquee() {
-        let n = marqueeChars.count
-        guard n > 0 else { return }
-        var window = ""
-        for i in 0..<min(marqueeWidth, n) {
-            window.append(marqueeChars[(marqueeOffset + i) % n])
-        }
-        setMenuBarTitle(window, monospaced: true)
-    }
-
-    private func stopMarquee() {
-        marqueeTimer?.invalidate()
-        marqueeTimer = nil
-        marqueeChars = []
-        marqueeOffset = 0
     }
 
     @objc private func quit() {

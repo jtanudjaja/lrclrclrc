@@ -60,7 +60,8 @@ you can show/hide the overlay, toggle click-through, and quit.
 - **Larger / Smaller** — step the overlay size.
 - **Click-Through** — the overlay ignores the mouse so clicks land behind it.
 - **Show Lyrics in Menu Bar** — show the current line in the menu bar instead of
-  the overlay (long lines scroll). Mutually exclusive with the overlay.
+  the overlay (the ♫ icon is hidden to make room). Mutually exclusive with the
+  overlay.
 
 ### Open in Xcode instead
 
