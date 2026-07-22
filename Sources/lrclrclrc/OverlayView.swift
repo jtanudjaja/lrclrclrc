@@ -66,6 +66,18 @@ struct OverlayView: View {
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                 }
+
+                // Playback controls: a real row under the lyrics, shown only on
+                // hover and only when the window is big enough for them.
+                if hovered, geo.size.height >= 108, geo.size.width >= 240 {
+                    HStack(spacing: 22 * scale) {
+                        transportButton("backward.fill", scale: scale) { controller.previousTrack() }
+                        transportButton(controller.isPlaying ? "pause.fill" : "play.fill", scale: scale) { controller.playPause() }
+                        transportButton("forward.fill", scale: scale) { controller.nextTrack() }
+                    }
+                    .padding(.top, 2 * scale)
+                    .transition(.opacity)
+                }
             }
             .foregroundColor(.white)
             .padding(.horizontal, 20 * scale)
@@ -80,21 +92,6 @@ struct OverlayView: View {
                     .fill(Color.black.opacity(hovered ? 0.5 : 0.08))
             )
             .clipShape(RoundedRectangle(cornerRadius: 16 * scale, style: .continuous))
-            // Playback controls: only on hover, and only when there's room.
-            .overlay(alignment: .top) {
-                if hovered, geo.size.height >= 108, geo.size.width >= 240 {
-                    HStack(spacing: 22 * scale) {
-                        transportButton("backward.fill", scale: scale) { controller.previousTrack() }
-                        transportButton(controller.isPlaying ? "pause.fill" : "play.fill", scale: scale) { controller.playPause() }
-                        transportButton("forward.fill", scale: scale) { controller.nextTrack() }
-                    }
-                    .padding(.vertical, 5 * scale)
-                    .padding(.horizontal, 14 * scale)
-                    .background(Capsule().fill(Color.black.opacity(0.4)))
-                    .padding(.top, 8 * scale)
-                    .transition(.opacity)
-                }
-            }
             // Resize grip cue, bottom-right, revealed on hover (the actual
             // resizing is handled by EdgeResizeView beneath, hence no hit test).
             .overlay(alignment: .bottomTrailing) {
