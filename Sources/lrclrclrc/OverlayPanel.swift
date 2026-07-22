@@ -84,12 +84,6 @@ final class OverlayPanel: NSPanel {
         return r
     }
 
-    /// Called by EdgeResizeView when an edge drag ends: the deferred moment to
-    /// recompute the live floor for the new width and grow into it (mid-drag,
-    /// the stage's clipping absorbs any squeeze — spec Part 3, floor bounds).
-    var onResizeSettle: (() -> Void)?
-    func settleAfterResize() { onResizeSettle?() }
-
     /// Apply a new live floor. `growNow` also grows the window immediately if
     /// it is below the new minimum (text-size bump, long-lined track); omitted
     /// during a live edge drag so the app never fights the user's hand.

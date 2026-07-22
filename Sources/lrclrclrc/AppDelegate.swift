@@ -53,11 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let panel = OverlayPanel(contentView: container)
         self.panel = panel
-
-        let resizer = EdgeResizeView(window: panel)
-        resizer.frame = container.bounds
-        resizer.autoresizingMask = [.width, .height]
-        container.addSubview(resizer, positioned: .above, relativeTo: hosting)
+        // Resizing is native: a borderless window with .resizable gets the
+        // window server's own edge handling — real cursors (including the
+        // slightly-outside grab area), live clamping to minSize, exactly like
+        // any other app's window. No custom edge view.
 
         setupMainMenu()
         setupStatusItem()
@@ -81,7 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         linesCancellable = controller.$allLines
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
-        panel.onResizeSettle = { [weak self] in self?.refreshFloor(growNow: true) }
+        // Deferred floor settle at the end of a native live resize.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main
+        ) { [weak self] _ in self?.refreshFloor(growNow: true) }
         refreshFloor(growNow: true)
 
         // The stage's "no lyrics found" state offers a Find Lyrics… shortcut.
