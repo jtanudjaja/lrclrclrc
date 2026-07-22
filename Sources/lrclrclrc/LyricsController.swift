@@ -55,7 +55,7 @@ final class LyricsController: ObservableObject {
     // MARK: - Polling
 
     private func poll() {
-        let (np, watcher) = readActive()
+        let (np, watcher, kind) = readActive()
         active = watcher
         switch np.state {
         case .permissionDenied:
@@ -92,20 +92,24 @@ final class LyricsController: ObservableObject {
         playing = np.isPlaying
         isPlaying = np.isPlaying
 
-        guard np.trackId != lastTrackId else { return } // same song
-        lastTrackId = np.trackId
+        // Namespace stored keys by source so Apple Music and Spotify ids
+        // (different schemes, plus the artist::title fallback) never collide.
+        let key = "\(kind.rawValue)::\(np.trackId)"
+
+        guard key != lastTrackId else { return } // same song
+        lastTrackId = key
         title = np.title
         artist = np.artist
         currentIndex = -1
-        offset = offsets.offset(for: np.trackId) // per-track sync correction
+        offset = offsets.offset(for: key) // per-track sync correction
 
         // A manual override wins over anything from the network.
-        if let manual = overrides.lyrics(for: np.trackId) {
+        if let manual = overrides.lyrics(for: key) {
             applyRaw(manual)
             return
         }
 
-        if let cached = cache[np.trackId] {
+        if let cached = cache[key] {
             apply(cached)
             return
         }
@@ -114,7 +118,7 @@ final class LyricsController: ObservableObject {
         clearLines()
 
         lyricsTask?.cancel()
-        let id = np.trackId
+        let id = key
         let title = np.title, artist = np.artist, album = np.album, duration = np.duration
         lyricsTask = Task { [weak self] in
             let result = await LyricsService.fetch(
@@ -180,22 +184,23 @@ final class LyricsController: ObservableObject {
         poll()
     }
 
-    /// Resolve the now-playing reading and the source that produced it.
-    private func readActive() -> (NowPlaying, PlayerSource) {
+    /// Resolve the now-playing reading, the source that produced it, and which
+    /// kind it was (so stored keys can be namespaced per source).
+    private func readActive() -> (NowPlaying, PlayerSource, PlayerSourceKind) {
         switch sourceKind {
         case .appleMusic:
-            return (music.poll(), music)
+            return (music.poll(), music, .appleMusic)
         case .spotify:
-            return (spotify.poll(), spotify)
+            return (spotify.poll(), spotify, .spotify)
         case .auto:
             let m = music.poll()
-            if m.state == .ok { return (m, music) }
+            if m.state == .ok { return (m, music, .appleMusic) }
             let s = spotify.poll()
-            if s.state == .ok { return (s, spotify) }
+            if s.state == .ok { return (s, spotify, .spotify) }
             if m.state == .permissionDenied || s.state == .permissionDenied {
-                return (NowPlaying(state: .permissionDenied), active)
+                return (NowPlaying(state: .permissionDenied), active, .appleMusic)
             }
-            return (m, music)
+            return (m, music, .appleMusic)
         }
     }
 
