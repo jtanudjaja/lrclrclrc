@@ -8,8 +8,7 @@ enum Settings {
     private enum Key {
         static let overlayFrame = "overlayFrame"
         static let clickThrough = "clickThrough"
-        static let menuBarLyrics = "menuBarLyrics"
-        static let overlayHidden = "overlayHidden"
+        static let displayMode = "displayMode"
     }
 
     /// Overlay window frame (position + size), stored as a string.
@@ -30,13 +29,9 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.clickThrough) }
     }
 
-    static var menuBarLyrics: Bool {
-        get { defaults.bool(forKey: Key.menuBarLyrics) }
-        set { defaults.set(newValue, forKey: Key.menuBarLyrics) }
-    }
-
-    static var overlayHidden: Bool {
-        get { defaults.bool(forKey: Key.overlayHidden) }
-        set { defaults.set(newValue, forKey: Key.overlayHidden) }
+    /// Raw value of DisplayMode ("overlay" / "menuBar" / "hidden").
+    static var displayMode: String {
+        get { defaults.string(forKey: Key.displayMode) ?? DisplayMode.overlay.rawValue }
+        set { defaults.set(newValue, forKey: Key.displayMode) }
     }
 }

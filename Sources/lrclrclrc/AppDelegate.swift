@@ -2,6 +2,14 @@ import AppKit
 import SwiftUI
 import Combine
 
+/// Where lyrics are shown. The overlay and the menu bar are mutually exclusive,
+/// so this is one setting rather than two toggles.
+enum DisplayMode: String {
+    case overlay
+    case menuBar
+    case hidden
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panel: OverlayPanel?
@@ -12,8 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var findLyricsWindow: NSWindow?
 
-    private var showMenuBarLyrics = false
-    private var menuBarLyricsItem: NSMenuItem?
+    private var displayMode: DisplayMode = .overlay
+    private var modeItems: [DisplayMode: NSMenuItem] = [:]
     private var lyricsCancellable: AnyCancellable?
 
     private let statusIcon = NSImage(
@@ -38,21 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resizer.autoresizingMask = [.width, .height]
         container.addSubview(resizer, positioned: .above, relativeTo: hosting)
 
-        panel.orderFrontRegardless()
-
         setupStatusItem()
         controller.start()
         restoreState()
     }
 
-    /// Reapply persisted toggle states on launch (frame is restored by the panel).
+    /// Reapply persisted state on launch (the panel restores its own frame).
     private func restoreState() {
         if Settings.clickThrough { setClickThrough(true) }
-        if Settings.menuBarLyrics {
-            setMenuBarLyrics(true, showOverlay: false)
-        } else if Settings.overlayHidden {
-            panel?.orderOut(nil)
-        }
+        let mode = DisplayMode(rawValue: Settings.displayMode) ?? .overlay
+        setDisplayMode(mode)
     }
 
     private func setupStatusItem() {
@@ -60,7 +63,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.image = statusIcon
 
         let menu = NSMenu()
-        menu.addItem(makeItem("Show / Hide Overlay", #selector(toggleOverlay), "h"))
+
+        // Merged display-mode picker (radio): Overlay / Menu Bar / Hidden.
+        let displaySubmenu = NSMenu()
+        displaySubmenu.addItem(modeItem("Overlay", .overlay))
+        displaySubmenu.addItem(modeItem("Menu Bar", .menuBar))
+        displaySubmenu.addItem(modeItem("Hidden", .hidden))
+        let displayParent = NSMenuItem(title: "Show Lyrics In", action: nil, keyEquivalent: "")
+        displayParent.submenu = displaySubmenu
+        menu.addItem(displayParent)
+
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(.separator())
         menu.addItem(makeItem("Larger", #selector(enlarge), "+"))
@@ -69,10 +81,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ct = makeItem("Click-Through (ignore mouse)", #selector(toggleClickThrough), "t")
         clickThroughItem = ct
         menu.addItem(ct)
-
-        let mb = makeItem("Show Lyrics in Menu Bar", #selector(toggleMenuBarLyrics), "m")
-        menuBarLyricsItem = mb
-        menu.addItem(mb)
 
         menu.addItem(.separator())
         menu.addItem(makeItem("Quit lrclrclrc", #selector(quit), "q"))
@@ -87,19 +95,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    // MARK: - Overlay controls
-
-    @objc private func toggleOverlay() {
-        guard let panel else { return }
-        if panel.isVisible {
-            panel.orderOut(nil)
-        } else {
-            // Overlay and menu-bar lyrics are mutually exclusive.
-            if showMenuBarLyrics { setMenuBarLyrics(false, showOverlay: false) }
-            panel.orderFrontRegardless()
-        }
-        Settings.overlayHidden = !panel.isVisible
+    private func modeItem(_ title: String, _ mode: DisplayMode) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(selectDisplayMode(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = mode.rawValue
+        modeItems[mode] = item
+        return item
     }
+
+    // MARK: - Display mode
+
+    @objc private func selectDisplayMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = DisplayMode(rawValue: raw) else { return }
+        setDisplayMode(mode)
+    }
+
+    private func setDisplayMode(_ mode: DisplayMode) {
+        displayMode = mode
+        Settings.displayMode = mode.rawValue
+        for (m, item) in modeItems { item.state = (m == mode) ? .on : .off }
+
+        switch mode {
+        case .overlay:
+            stopMenuBarLyrics()
+            panel?.orderFrontRegardless()
+        case .menuBar:
+            panel?.orderOut(nil)
+            startMenuBarLyrics()
+        case .hidden:
+            stopMenuBarLyrics()
+            panel?.orderOut(nil)
+        }
+    }
+
+    // MARK: - Overlay controls
 
     @objc private func toggleClickThrough() {
         setClickThrough(!clickThrough)
@@ -134,38 +164,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu-bar lyrics
 
-    @objc private func toggleMenuBarLyrics() {
-        setMenuBarLyrics(!showMenuBarLyrics, showOverlay: true)
+    private func startMenuBarLyrics() {
+        lyricsCancellable = controller.$currentLine
+            .receive(on: RunLoop.main)
+            .sink { [weak self] line in self?.updateMenuBarText(line) }
+        updateMenuBarText(controller.currentLine)
     }
 
-    /// Menu-bar lyrics and the floating overlay are mutually exclusive display
-    /// modes. Turning the menu-bar mode on hides the overlay; turning it off
-    /// restores the overlay (unless the caller is itself showing the overlay).
-    private func setMenuBarLyrics(_ on: Bool, showOverlay: Bool) {
-        showMenuBarLyrics = on
-        menuBarLyricsItem?.state = on ? .on : .off
-        Settings.menuBarLyrics = on
-
-        if on {
-            panel?.orderOut(nil)
-            lyricsCancellable = controller.$currentLine
-                .receive(on: RunLoop.main)
-                .sink { [weak self] line in self?.updateMenuBarText(line) }
-            updateMenuBarText(controller.currentLine)
-        } else {
-            lyricsCancellable?.cancel()
-            lyricsCancellable = nil
-            statusItem?.button?.attributedTitle = NSAttributedString(string: "")
-            statusItem?.button?.image = statusIcon
-            if showOverlay {
-                panel?.orderFrontRegardless()
-                Settings.overlayHidden = false
-            }
-        }
+    private func stopMenuBarLyrics() {
+        lyricsCancellable?.cancel()
+        lyricsCancellable = nil
+        statusItem?.button?.attributedTitle = NSAttributedString(string: "")
+        statusItem?.button?.image = statusIcon
     }
 
     private func updateMenuBarText(_ line: String) {
-        guard showMenuBarLyrics, let button = statusItem?.button else { return }
+        guard displayMode == .menuBar, let button = statusItem?.button else { return }
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             button.image = statusIcon
