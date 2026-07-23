@@ -394,15 +394,26 @@ final class LyricsController: ObservableObject {
     /// the next timed line → the ♪ countdown phase (spec Part 6). Only the
     /// countdown's whole-second value is published, so this stays ~1Hz.
     private func updateGapPhase(position: Double, index: Int) {
+        // The 3s threshold only gates *entering* the countdown (tiny gaps
+        // aren't worth announcing). Once on screen it runs down to 0 —
+        // vanishing mid-count would read as a broken timer. Seconds are
+        // rounded up so "in 0:01" is the last thing shown, not "0:00".
         var phase: StagePhase = .synced
-        if index == -1, let first = lines.first?.time, first - position > 3 {
-            phase = .intro(countdown: max(0, Int(first - position)), first: true)
+        if index == -1, let first = lines.first?.time,
+           first - position > 3 || (first - position > 0 && inIntro(first: true)) {
+            phase = .intro(countdown: max(0, Int((first - position).rounded(.up))), first: true)
         } else if index >= 0, index + 1 < lines.count,
                   lines[index].text.isEmpty,
-                  let next = lines[index + 1].time, next - position > 3 {
-            phase = .intro(countdown: max(0, Int(next - position)), first: false)
+                  let next = lines[index + 1].time,
+                  next - position > 3 || (next - position > 0 && inIntro(first: false)) {
+            phase = .intro(countdown: max(0, Int((next - position).rounded(.up))), first: false)
         }
         if phase != stagePhase { stagePhase = phase }
+    }
+
+    private func inIntro(first: Bool) -> Bool {
+        if case .intro(_, let f) = stagePhase { return f == first }
+        return false
     }
 
     private func estimatedPosition() -> Double {
