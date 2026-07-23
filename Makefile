@@ -25,12 +25,19 @@ run: build
 	@killall lrclrclrc 2>/dev/null || true
 	open $(APP)
 
+# Wait for the old instance to exit (`open` right after killall can re-activate
+# the dying process instead of launching the new copy), and stage the copy
+# before removing the old one so a failed ditto — or a bad APP/INSTALL_DIR
+# override — dies harmlessly instead of leaving /Applications without the app.
 install: build
 	@killall lrclrclrc 2>/dev/null || true
-	rm -rf $(INSTALLED_APP)
-	ditto $(APP) $(INSTALLED_APP)
+	@for i in $$(seq 1 50); do pgrep -xq lrclrclrc || break; sleep 0.1; done
+	rm -rf "$(INSTALLED_APP).tmp"
+	ditto "$(APP)" "$(INSTALLED_APP).tmp"
+	rm -rf "$(INSTALLED_APP)"
+	mv "$(INSTALLED_APP).tmp" "$(INSTALLED_APP)"
 	@echo "✓ installed $(INSTALLED_APP)"
-	open $(INSTALLED_APP)
+	open "$(INSTALLED_APP)"
 
 dmg: build
 	bash scripts/make-dmg.sh

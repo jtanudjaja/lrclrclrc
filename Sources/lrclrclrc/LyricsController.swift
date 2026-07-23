@@ -34,15 +34,28 @@ final class LyricsController: ObservableObject {
     @Published private(set) var stagePhase: StagePhase = .idle
     /// True after ~30s with nothing playing — the overlay fades to near-transparent.
     @Published private(set) var longIdle = false
+    /// Every player and whether it's enabled — the Preferences checkbox list.
+    @Published private(set) var sourceStates: [SourceState] = []
+    /// The enabled players, in menu order: the choices the Follow menu offers.
+    @Published private(set) var enabledSources: [PlayerSourceKind] = []
+    /// The one enabled player being followed; nil = automatic (whichever of the
+    /// enabled ones is actually playing).
+    @Published private(set) var followedSource: PlayerSourceKind?
+    /// The idle stage's prompt — it names the players actually being followed
+    /// rather than a hardcoded pair, so it stays true when one is switched off.
+    @Published private(set) var sourceHint = ""
 
     // All AppleScript work (polls *and* playback commands) is confined to the
     // one serial pollQueue — NSAppleScript is not thread-safe, and a transport
     // press racing a background poll was a real crash/hang risk.
     private let pollQueue: DispatchQueue
-    private let music: PlayerSource
-    private let spotify: PlayerSource
-    private var active: PlayerSource
-    private var sourceKind = PlayerSourceKind(rawValue: Settings.source) ?? .auto
+    private let sources = SourceRegistry()
+    // Built on first use, and only ever for a player we've located — see
+    // SourceRegistry on why an unlocated player must never get a script.
+    // Main-thread state: the poll queue is handed a ready-made list.
+    private var players: [PlayerSourceKind: PlayerSource] = [:]
+    private var active: PlayerSource?
+    private var activeKind: PlayerSourceKind?
 
     private let overrides = OverrideStore()
     private let offsets = OffsetStore()
@@ -70,6 +83,9 @@ final class LyricsController: ObservableObject {
     // After a seek, the player reports its old position for a beat; trusting it
     // would snap the lyrics back before jumping forward again (scrub bounce).
     private var seekGraceUntil = Date.distantPast
+    // The timestamp the ♪ countdown is counting toward — its "stay on screen
+    // down to 0" stickiness applies only to this gap, never a neighbouring one.
+    private var introTarget: Double?
 
     private var pollTimer: Timer?
     private var tickTimer: Timer?
@@ -81,13 +97,11 @@ final class LyricsController: ObservableObject {
     private var idleTickCounter = 0         // throttle polling while idle
     private var retryAttempt = 0            // fetch backoff: 5s, 10s, 20s, 40s, 60s cap
     private var notOkStreak = 0             // consecutive stopped/notRunning polls
+    private var noSourceShown = false       // "nothing to follow" already on screen
 
     init() {
-        let queue = DispatchQueue(label: "net.lrclrclrc.poll")
-        pollQueue = queue
-        music = AppleScriptPlayer(appName: "Music", idProperty: "persistent ID", durationScale: 1, queue: queue)
-        spotify = AppleScriptPlayer(appName: "Spotify", idProperty: "id", durationScale: 0.001, queue: queue)
-        active = music
+        pollQueue = DispatchQueue(label: "net.lrclrclrc.poll")
+        publishSources()
     }
 
     deinit {
@@ -130,7 +144,7 @@ final class LyricsController: ObservableObject {
     /// React instantly to track/state changes instead of waiting for the poll.
     private func observePlayerNotifications() {
         let center = DistributedNotificationCenter.default()
-        for name in ["com.apple.Music.playerInfo", "com.spotify.client.PlaybackStateChanged"] {
+        for name in PlayerSourceKind.allCases.map(\.changeNotification) {
             let token = center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
                 self?.poll()
             }
@@ -146,11 +160,14 @@ final class LyricsController: ObservableObject {
 
     private func poll() {
         if pollInFlight { return } // coalesce overlapping requests
+        // Assembled here, on main: `players` is main-thread state, and this is
+        // also where "which source won last time" decides the order.
+        let order = pollOrder()
+        guard !order.isEmpty else { showNoSource(); return }
         pollInFlight = true
-        let preferred = sourceKind
         pollQueue.async { [weak self] in
             guard let self else { return }
-            let (np, kind) = self.read(preferred: preferred)
+            let (np, kind) = Self.read(order)
             DispatchQueue.main.async {
                 self.pollInFlight = false
                 self.process(np, kind: kind)
@@ -158,28 +175,71 @@ final class LyricsController: ObservableObject {
         }
     }
 
-    /// Runs on the poll queue. Reads the chosen source (Auto tries Music, then
-    /// Spotify), returning the reading and which source produced it.
-    private func read(preferred: PlayerSourceKind) -> (NowPlaying, PlayerSourceKind) {
-        switch preferred {
-        case .appleMusic:
-            return (music.poll(), .appleMusic)
-        case .spotify:
-            return (spotify.poll(), .spotify)
-        case .auto:
-            let m = music.poll()
-            if m.state == .ok { return (m, .appleMusic) }
-            let s = spotify.poll()
-            if s.state == .ok { return (s, .spotify) }
-            if m.state == .permissionDenied || s.state == .permissionDenied {
-                return (NowPlaying(state: .permissionDenied), .appleMusic)
-            }
-            return (m, .appleMusic)
+    /// The script runner for a source, built on first use. Returns nil for a
+    /// player we couldn't locate — that one is never scripted at all.
+    private func player(for kind: PlayerSourceKind) -> PlayerSource? {
+        if let existing = players[kind] { return existing }
+        guard let app = sources.located[kind] else { return nil }
+        let made = AppleScriptPlayer(kind: kind, bundleID: app.bundleID, queue: pollQueue)
+        players[kind] = made
+        return made
+    }
+
+    /// Who gets polled. Pinning one player in the Follow menu means only that
+    /// one is read; on automatic every enabled player is, the one that last
+    /// produced a track first — so with two players open, whichever is already
+    /// on screen keeps the stage until it stops, instead of list order quietly
+    /// deciding for the user.
+    private func pollOrder() -> [(PlayerSourceKind, PlayerSource)] {
+        var kinds = sources.enabled
+        if let followedSource {
+            kinds = kinds.filter { $0 == followedSource }
+        } else if let activeKind, let i = kinds.firstIndex(of: activeKind) {
+            kinds.insert(kinds.remove(at: i), at: 0)
         }
+        return kinds.compactMap { kind in player(for: kind).map { (kind, $0) } }
+    }
+
+    /// Runs on the poll queue. The first source with a live track wins; failing
+    /// that, a permission refusal outranks plain silence, because it's the one
+    /// state the user can do something about.
+    private static func read(_ order: [(PlayerSourceKind, PlayerSource)]) -> (NowPlaying, PlayerSourceKind) {
+        var fallback: (NowPlaying, PlayerSourceKind)?
+        var denied: PlayerSourceKind?
+        for (kind, player) in order {
+            let np = player.poll()
+            if np.state == .ok { return (np, kind) }
+            if np.state == .permissionDenied, denied == nil { denied = kind }
+            if fallback == nil { fallback = (np, kind) }
+        }
+        if let denied { return (NowPlaying(state: .permissionDenied), denied) }
+        return fallback ?? (NowPlaying(state: .notRunning), .appleMusic)
+    }
+
+    /// Nothing is switched on (or nothing is installed) — the idle stage with
+    /// `sourceHint` pointing at Preferences says the rest. Latched, because the
+    /// poll timer keeps firing and republishing it would churn the overlay.
+    private func showNoSource() {
+        guard !noSourceShown else { return }
+        noSourceShown = true
+        isActive = false
+        permissionNeeded = false
+        title = "lrclrclrc"
+        artist = ""
+        clearTrack()
+        status = ""
+        lastTrackId = ""
+        isPlaying = false
+        playing = false
+        stagePhase = .idle
     }
 
     private func process(_ np: NowPlaying, kind: PlayerSourceKind) {
-        active = (kind == .spotify) ? spotify : music
+        noSourceShown = false
+        if np.state == .ok {
+            active = players[kind]
+            activeKind = kind
+        }
         isActive = (np.state == .ok)
         if isActive { idleTickCounter = 0 }
 
@@ -340,6 +400,7 @@ final class LyricsController: ObservableObject {
         isSynced = synced
         currentIndex = -1
         currentLineIndex = -1
+        introTarget = nil
 
         if lines.isEmpty {
             currentLine = "— no lyrics found —"
@@ -394,26 +455,30 @@ final class LyricsController: ObservableObject {
     /// the next timed line → the ♪ countdown phase (spec Part 6). Only the
     /// countdown's whole-second value is published, so this stays ~1Hz.
     private func updateGapPhase(position: Double, index: Int) {
+        // The timed line this tick could count toward: the first line while
+        // still ahead of it, or the line after an empty instrumental marker.
+        var target: Double?
+        if index == -1 {
+            target = lines.first?.time
+        } else if index >= 0, index + 1 < lines.count, lines[index].text.isEmpty {
+            target = lines[index + 1].time
+        }
+
         // The 3s threshold only gates *entering* the countdown (tiny gaps
         // aren't worth announcing). Once on screen it runs down to 0 —
-        // vanishing mid-count would read as a broken timer. Seconds are
-        // rounded up so "in 0:01" is the last thing shown, not "0:00".
+        // vanishing mid-count would read as a broken timer — but the
+        // stickiness is keyed to the target's timestamp, so a seek into a
+        // different sub-3s gap never inherits it. Seconds are rounded up so
+        // "in 0:01" is the last thing shown, not "0:00".
         var phase: StagePhase = .synced
-        if index == -1, let first = lines.first?.time,
-           first - position > 3 || (first - position > 0 && inIntro(first: true)) {
-            phase = .intro(countdown: max(0, Int((first - position).rounded(.up))), first: true)
-        } else if index >= 0, index + 1 < lines.count,
-                  lines[index].text.isEmpty,
-                  let next = lines[index + 1].time,
-                  next - position > 3 || (next - position > 0 && inIntro(first: false)) {
-            phase = .intro(countdown: max(0, Int((next - position).rounded(.up))), first: false)
+        if let target {
+            let gap = target - position
+            if gap > 3 || (gap > 0 && introTarget == target) {
+                phase = .intro(countdown: Int(gap.rounded(.up)), first: index == -1)
+            }
         }
+        introTarget = (phase == .synced) ? nil : target
         if phase != stagePhase { stagePhase = phase }
-    }
-
-    private func inIntro(first: Bool) -> Bool {
-        if case .intro(_, let f) = stagePhase { return f == first }
-        return false
     }
 
     private func estimatedPosition() -> Double {
@@ -460,17 +525,22 @@ final class LyricsController: ObservableObject {
         isSynced = false
         currentIndex = -1
         currentLineIndex = -1
+        introTarget = nil
         clearLines()
     }
 
     // MARK: - Playback controls
 
-    func playPause() { active.playPause(); refreshSoon() }
-    func nextTrack() { active.nextTrack(); refreshSoon() }
-    func previousTrack() { active.previousTrack(); refreshSoon() }
+    // No active player means nothing has reported a track yet — there is
+    // nothing to command, so these are no-ops rather than a guess at which
+    // player the user meant.
+    func playPause() { active?.playPause(); refreshSoon() }
+    func nextTrack() { active?.nextTrack(); refreshSoon() }
+    func previousTrack() { active?.previousTrack(); refreshSoon() }
 
     /// Seek playback to a timestamp (used by the full-lyrics view's tap-to-jump).
     func seek(to seconds: Double) {
+        guard let active else { return }
         let target = max(0, seconds)
         active.seek(to: target)
         anchorPos = target // update the clock immediately for a snappy jump
@@ -508,15 +578,80 @@ final class LyricsController: ObservableObject {
         }
     }
 
-    // MARK: - Source
+    // MARK: - Sources
 
-    var currentSource: PlayerSourceKind { sourceKind }
+    /// Enable or disable a player. Enabling one we couldn't find is the only
+    /// thing in the app that opens a file picker — and only then, so a Mac
+    /// without Spotify never sees a "Where is Spotify?" dialog at all.
+    /// Returns false if the user cancelled the picker or chose a non-app.
+    @discardableResult
+    func setSourceEnabled(_ enabled: Bool, for kind: PlayerSourceKind) -> Bool {
+        if sources.setEnabled(enabled, for: kind) {
+            sourcesChanged()
+            return true
+        }
+        // Cancelling leaves the source off. Republish anyway so a checkbox that
+        // already flipped itself in anticipation snaps back.
+        guard enabled, let url = SourceRegistry.askForApp(kind) else {
+            publishSources()
+            return false
+        }
+        guard sources.adopt(url, as: kind) else {
+            let alert = NSAlert()
+            alert.messageText = "That doesn't look like an app."
+            alert.informativeText = "Choose \(kind.displayName)'s .app bundle — usually in /Applications."
+            alert.runModal()
+            publishSources()
+            return false
+        }
+        // The old runner, if any, was built around the previous bundle id.
+        players[kind] = nil
+        sourcesChanged()
+        return true
+    }
 
-    func setSource(_ kind: PlayerSourceKind) {
-        sourceKind = kind
-        Settings.source = kind.rawValue
-        lastTrackId = "" // force reload from the newly selected source
+    /// Pin the lyrics to one enabled player, or nil for automatic.
+    func followSource(_ kind: PlayerSourceKind?) {
+        Settings.selectedSource = kind?.rawValue
+        sourcesChanged()
+    }
+
+    /// Back to everything installed enabled and nothing pinned. Players are
+    /// dropped too, so a hand-located app doesn't outlive the setting that
+    /// pointed at it.
+    func resetSources() {
+        sources.reset()
+        players.removeAll()
+        active = nil
+        activeKind = nil
+        sourcesChanged()
+    }
+
+    private func sourcesChanged() {
+        publishSources()
+        noSourceShown = false
+        lastTrackId = "" // force a reload from whatever we now follow
         poll()
+    }
+
+    private func publishSources() {
+        sourceStates = sources.states
+        enabledSources = sources.enabled
+        // A pin only survives while its player is still enabled — disabling the
+        // followed app drops back to automatic rather than following nothing.
+        let pinned = Settings.selectedSource.flatMap(PlayerSourceKind.init(rawValue:))
+        followedSource = pinned.flatMap { enabledSources.contains($0) ? $0 : nil }
+
+        let names = (followedSource.map { [$0] } ?? enabledSources).map(\.displayName)
+        switch names.count {
+        case 0:
+            sourceHint = "No music app is enabled — turn one on in Preferences"
+        case 1:
+            sourceHint = "Play something in \(names[0])"
+        default:
+            sourceHint = "Play something in " + names.dropLast().joined(separator: ", ")
+                + " or " + names[names.count - 1]
+        }
     }
 
     // MARK: - Sync offset (per track)

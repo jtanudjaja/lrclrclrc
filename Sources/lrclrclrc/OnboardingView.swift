@@ -66,20 +66,30 @@ struct OnboardingView: View {
         }
     }
 
+    /// No "which player do you use?" question any more — we looked. This step
+    /// just shows the answer, and lets the user correct it if their copy lives
+    /// somewhere we couldn't see.
     private var sourceStep: some View {
         VStack(spacing: 14) {
             Image(systemName: "music.note")
                 .font(.system(size: 40, weight: .semibold))
                 .foregroundStyle(.tint)
-            Text("Which player do you use?").font(.title3).bold()
-            Text("Skip if you're not sure — you can change this anytime in Preferences.")
+            Text("Your music apps").font(.title3).bold()
+            Text("These are enabled. You can change it anytime in Preferences.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                sourceButton("Apple Music", .appleMusic)
-                sourceButton("Spotify", .spotify)
-                sourceButton("Both", .auto)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(controller.sourceStates) { state in
+                    Toggle(isOn: Binding(
+                        get: { state.isEnabled },
+                        set: { controller.setSourceEnabled($0, for: state.kind) }
+                    )) {
+                        Text(state.isInstalled
+                             ? state.kind.displayName
+                             : "\(state.kind.displayName) — not found")
+                    }
+                }
             }
         }
     }
@@ -114,9 +124,7 @@ struct OnboardingView: View {
                 Button("Back") { step -= 1 }
             }
             Spacer()
-            if step == 2 {
-                Button("Skip") { step += 1 } // skip player selection
-            } else if step == steps - 1 {
+            if step == steps - 1 {
                 Button("Get Started") { onDone() }
                     .keyboardShortcut(.defaultAction)
             } else {
@@ -124,13 +132,5 @@ struct OnboardingView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-    }
-
-    private func sourceButton(_ title: String, _ kind: PlayerSourceKind) -> some View {
-        Button(title) {
-            controller.setSource(kind)
-            step += 1
-        }
-        .buttonStyle(.bordered)
     }
 }

@@ -9,10 +9,12 @@ enum Settings {
         static let overlayFrame = "overlayFrame"
         static let clickThrough = "clickThrough"
         static let displayMode = "displayMode"
-        static let source = "source"
+        static let disabledSources = "disabledSources"
+        static let sourceAppPaths = "sourceAppPaths"
+        static let selectedSource = "selectedSource"
         static let fontScale = "fontScale"
         static let backgroundOpacity = "backgroundOpacity"
-        static let accent = "accent"
+        static let textColor = "textColor"
         static let alwaysShowControls = "alwaysShowControls"
         static let hasOnboarded = "hasOnboarded"
     }
@@ -46,10 +48,31 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.displayMode) }
     }
 
-    /// Raw value of PlayerSourceKind ("auto" / "appleMusic" / "spotify").
-    static var source: String {
-        get { defaults.string(forKey: Key.source) ?? PlayerSourceKind.auto.rawValue }
-        set { defaults.set(newValue, forKey: Key.source) }
+    /// Raw values of the players the user has switched *off*. Storing the
+    /// opt-outs rather than the opt-ins is what lets a player installed later be
+    /// followed automatically: unknown means "yes, if it's there".
+    static var disabledSources: Set<String> {
+        get { Set(defaults.stringArray(forKey: Key.disabledSources) ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: Key.disabledSources) }
+    }
+
+    /// Which enabled player the lyrics follow, as a PlayerSourceKind raw value.
+    /// nil means automatic: whichever enabled player is actually playing.
+    static var selectedSource: String? {
+        get { defaults.string(forKey: Key.selectedSource) }
+        set { defaults.set(newValue, forKey: Key.selectedSource) }
+    }
+
+    /// Where a player lives when LaunchServices can't find it and the user
+    /// pointed us at it by hand, keyed by PlayerSourceKind raw value.
+    static func sourceAppPath(for kind: PlayerSourceKind) -> String? {
+        (defaults.dictionary(forKey: Key.sourceAppPaths) as? [String: String])?[kind.rawValue]
+    }
+
+    static func setSourceAppPath(_ path: String?, for kind: PlayerSourceKind) {
+        var map = (defaults.dictionary(forKey: Key.sourceAppPaths) as? [String: String]) ?? [:]
+        map[kind.rawValue] = path
+        defaults.set(map, forKey: Key.sourceAppPaths)
     }
 
     // MARK: - Appearance
@@ -64,9 +87,10 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.backgroundOpacity) }
     }
 
-    static var accent: String {
-        get { defaults.string(forKey: Key.accent) ?? AccentChoice.blue.rawValue }
-        set { defaults.set(newValue, forKey: Key.accent) }
+    /// Lyric/chrome text colour as "#RRGGBB".
+    static var textColor: String {
+        get { defaults.string(forKey: Key.textColor) ?? "#FFFFFF" }
+        set { defaults.set(newValue, forKey: Key.textColor) }
     }
 
     static var alwaysShowControls: Bool {

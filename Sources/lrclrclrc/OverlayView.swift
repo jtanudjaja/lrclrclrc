@@ -44,6 +44,14 @@ struct OverlayView: View {
         reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85)
     }
 
+    /// The entire palette: the user's colour, and the pole opposite it. Text
+    /// and marks take the first, everything they are read *against* — halo
+    /// rim, hero bloom, chip backing — takes the second. Nothing on the card
+    /// is a third colour, so there is no element that can be legible on one
+    /// wallpaper and lost on the next.
+    private var textColor: Color { appearance.textColor }
+    private var haloColor: Color { appearance.textShadow }
+
     var body: some View {
         GeometryReader { geo in
             card(size: geo.size)
@@ -83,8 +91,8 @@ struct OverlayView: View {
                     .frame(height: OverlayMetrics.footerH * fs)
             }
         }
-        .padding(.horizontal, 24 * fs)
-        .padding(.vertical, 14 * fs)
+        .padding(.horizontal, OverlayMetrics.hPadding / 2 * fs)
+        .padding(.vertical, OverlayMetrics.vPadding / 2 * fs)
         .frame(width: size.width, height: size.height)
         .background { backgroundLayer(radius: radius) }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -137,7 +145,7 @@ struct OverlayView: View {
             }
         }
         .opacity(dimmed ? 0.55 : 1)
-        .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
+        .shadow(color: haloColor.opacity(0.75), radius: 2, y: 1)
         // The whole header row is the card's drag handle — overlaid (not
         // background) so grabbing the title/artist text itself also drags;
         // there's nothing interactive in the header to block.
@@ -147,14 +155,14 @@ struct OverlayView: View {
     private func headerOneRow(fs: CGFloat) -> some View {
         var text = Text(Image(systemName: "music.note"))
             .font(.system(size: 8.5 * fs, weight: .semibold))
-            .foregroundColor(.white.opacity(0.45))
+            .foregroundColor(textColor.opacity(0.45))
         text = text + Text("  \(controller.title)")
             .font(.system(size: 11 * fs, weight: .semibold))
-            .foregroundColor(.white.opacity(0.9))
+            .foregroundColor(textColor.opacity(0.9))
         if !controller.artist.isEmpty {
             text = text + Text("   ·   \(controller.artist)")
                 .font(.system(size: 11 * fs, weight: .regular))
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(textColor.opacity(0.55))
         }
         return text
             .tracking(0.2 * fs)
@@ -167,15 +175,15 @@ struct OverlayView: View {
         VStack(spacing: 1 * fs) {
             (Text(Image(systemName: "music.note"))
                 .font(.system(size: 8.5 * fs, weight: .semibold))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(textColor.opacity(0.45))
              + Text("  \(controller.title)")
                 .font(.system(size: 11 * fs, weight: .semibold))
-                .foregroundColor(.white.opacity(0.9)))
+                .foregroundColor(textColor.opacity(0.9)))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Text(controller.artist)
                 .font(.system(size: 10 * fs))
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(textColor.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -189,7 +197,16 @@ struct OverlayView: View {
             stageContent(fs: fs, stage: g.size)
                 .frame(width: g.size.width, height: g.size.height)
         }
-        .clipped()
+        // Vertically this is a real containment rule: the stage must not spill
+        // into the header or the footer, and the phases that aren't the
+        // teleprompter have no edge fade to soften an overrun. Horizontally it
+        // was only ever incidental — glyphs stop at their own bounds, so the
+        // side edges never cut anything until the hero bloom arrived. They cut
+        // it into a straight vertical line, well inside the window, because the
+        // stage sits within the card's own padding. So the sides open up by the
+        // bloom's reach and the card's rounded clip becomes the horizontal
+        // boundary; top and bottom are unchanged.
+        .clipShape(SideBleedRect(bleed: OverlayMetrics.heroGlowBleed(fs: fs)))
     }
 
     @ViewBuilder
@@ -219,7 +236,7 @@ struct OverlayView: View {
         VStack(spacing: 8 * fs) {
             Text("lrclrclrc needs permission to read the current track")
                 .font(.system(size: 12 * fs))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(textColor.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: { controller.openAutomationSettings() }) {
@@ -239,23 +256,23 @@ struct OverlayView: View {
         VStack(spacing: 6 * fs) {
             Text("♪")
                 .font(.system(size: 20 * fs, weight: .bold))
-                .foregroundStyle(.white.opacity(0.4))
-            Text("Play something in Music or Spotify")
+                .foregroundStyle(textColor.opacity(0.4))
+            Text(controller.sourceHint)
                 .font(.system(size: 10.5 * fs))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(textColor.opacity(0.4))
         }
-        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .shadow(color: haloColor.opacity(0.7), radius: 2, y: 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func searchingStage(_ fs: CGFloat) -> some View {
         VStack(spacing: 9 * fs) {
-            Capsule().fill(.white.opacity(0.16)).frame(width: 150 * fs, height: 10 * fs)
-            Capsule().fill(.white.opacity(0.11)).frame(width: 104 * fs, height: 8 * fs)
+            Capsule().fill(textColor.opacity(0.16)).frame(width: 150 * fs, height: 10 * fs)
+            Capsule().fill(textColor.opacity(0.11)).frame(width: 104 * fs, height: 8 * fs)
             Text(controller.status)
                 .font(.system(size: 9.5 * fs, weight: .medium))
                 .tracking(0.4 * fs)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(textColor.opacity(0.4))
                 .padding(.top, 4 * fs)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -265,20 +282,20 @@ struct OverlayView: View {
         VStack(spacing: 8 * fs) {
             Text("No lyrics found for this track")
                 .font(.system(size: 12 * fs))
-                .foregroundStyle(.white.opacity(0.65))
+                .foregroundStyle(textColor.opacity(0.65))
             Button(action: {
                 NotificationCenter.default.post(name: Notification.Name("lrclrclrc.openFindLyrics"), object: nil)
             }) {
                 Text("Find lyrics…")
                     .font(.system(size: 10.5 * fs, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(textColor.opacity(0.95))
                     .padding(.horizontal, 11 * fs)
                     .padding(.vertical, 3.5 * fs)
-                    .background(Capsule().fill(appearance.accent.color.opacity(0.3)))
+                    .background(chipBacking)
             }
             .buttonStyle(.plain)
         }
-        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .shadow(color: haloColor.opacity(0.7), radius: 2, y: 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -289,17 +306,17 @@ struct OverlayView: View {
         HStack(spacing: 6 * fs) {
             Text("♪")
                 .font(.system(size: 19 * fs, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: appearance.accent.color.opacity(0.35), radius: 11 * fs)
-            Circle().fill(.white).frame(width: 5 * fs, height: 5 * fs)
-            Circle().fill(.white.opacity(0.75)).frame(width: 5 * fs, height: 5 * fs)
-            Circle().fill(.white.opacity(0.5)).frame(width: 5 * fs, height: 5 * fs)
+                .foregroundStyle(textColor)
+                .heroGlow(haloColor, fs: fs)
+            ForEach([1.0, 0.75, 0.5], id: \.self) { opacity in
+                Circle().fill(textColor.opacity(opacity)).frame(width: 5 * fs, height: 5 * fs)
+            }
             Text(countdownLabel(countdown, first: first))
                 .font(.system(size: 13 * fs, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(textColor.opacity(0.95))
                 .padding(.leading, 3 * fs)
         }
-        .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
+        .shadow(color: haloColor.opacity(0.75), radius: 2, y: 1)
         .frame(maxWidth: .infinity)
     }
 
@@ -349,7 +366,18 @@ struct OverlayView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .mask(edgeFade(stageHeight: stage.height, fs: fs))
+        // The fade is a *vertical* dissolve, but a mask cuts on all four sides:
+        // sized to the band, it also erases everything past the band's left and
+        // right edges. Nothing used to be wide enough to notice — glyphs stop at
+        // the text's own bounds — but the hero bloom spreads past them, so a
+        // full-width focus line got its pool sliced into a straight vertical
+        // line. Bleeding the gradient outward leaves the horizontal boundary to
+        // the card's rounded clip, which is a real edge, instead of to this
+        // invisible rectangle.
+        .mask(
+            edgeFade(stageHeight: stage.height, fs: fs)
+                .padding(.horizontal, -OverlayMetrics.heroGlowBleed(fs: fs))
+        )
         .contentShape(Rectangle())
         .gesture(scrubGesture(step: step, lineCount: lines.count))
         .animation(scrubbing ? nil : motion, value: controller.currentLineIndex)
@@ -425,7 +453,7 @@ struct OverlayView: View {
             Text(controller.status)
                 .font(.system(size: 9.5 * fs, weight: .medium))
                 .tracking(0.4 * fs)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(textColor.opacity(0.4))
         } else if let intro, slot.id == focus {
             // Intro / mid-song instrumental: the countdown occupies the hero
             // slot; the surrounding lines stay visible and seekable.
@@ -450,19 +478,22 @@ struct OverlayView: View {
         return HStack(spacing: 6 * fs) {
             Text(raw.isEmpty ? "♪" : raw)
                 .font(.system(size: size, weight: weight))
-                .foregroundStyle(.white.opacity(opacity))
+                .foregroundStyle(textColor.opacity(opacity))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
-                .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
-                .shadow(color: (isFocus && !softer) ? appearance.accent.color.opacity(0.35) : .clear,
-                        radius: (isFocus && !softer) ? 11 * fs : 0)
+                .shadow(color: haloColor.opacity(0.75), radius: 2, y: 1)
+                .heroGlow(haloColor, fs: fs, on: isFocus && !softer)
             if showMarker {
+                // A 4pt dot has no interior to carry contrast, so it takes the
+                // text's colour *and* the text's rim — without the halo it is
+                // the one mark on the card that a matching wallpaper erases.
                 Circle()
-                    .fill(appearance.accent.color.opacity(0.9))
+                    .fill(textColor.opacity(0.9))
                     .frame(width: 4 * fs, height: 4 * fs)
+                    .shadow(color: haloColor.opacity(0.75), radius: 2, y: 1)
                 Text("playing")
                     .font(.system(size: 7.5 * fs, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(textColor.opacity(0.8))
             }
             if scrubbing, isFocus, let target = controller.seekTarget(forLine: index) {
                 timeChip(target, fs: fs)
@@ -477,10 +508,24 @@ struct OverlayView: View {
         let s = max(0, Int(seconds))
         return Text(String(format: "%d:%02d", s / 60, s % 60))
             .font(.system(size: 9 * fs, weight: .semibold).monospacedDigit())
-            .foregroundStyle(.white)
+            .foregroundStyle(textColor)
             .padding(.horizontal, 7 * fs)
             .padding(.vertical, 2 * fs)
-            .background(Capsule().fill(appearance.accent.color.opacity(0.32)))
+            .background(chipBacking)
+    }
+
+    /// Backing for the two small filled chips (Find-lyrics, the scrub time).
+    /// Both carry a label at 9–10.5pt, which is below the large-text bar, so
+    /// the fill has to be a real surface rather than a tint: the halo's pole
+    /// at 0.6 puts the label at ~5.7:1 even when the wallpaper behind it is
+    /// the label's own colour. The rim is what the fill cannot do — on the
+    /// pole where the fill matches the desktop (a dark chip on a dark
+    /// wallpaper) it is the only thing left holding the chip's shape, which
+    /// a button needs in order to look like one.
+    private var chipBacking: some View {
+        Capsule()
+            .fill(haloColor.opacity(0.6))
+            .overlay(Capsule().strokeBorder(textColor.opacity(0.3), lineWidth: 1))
     }
 
     /// Top/bottom dissolve for the lyric band. The fade span is line-height-
@@ -562,7 +607,7 @@ struct OverlayView: View {
             transportButton("minus", fs: fs) { controller.nudgeOffset(-0.1) }
             Text(String(format: "%+.1fs", controller.offset))
                 .font(.system(size: 10.5 * fs, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(textColor.opacity(0.8))
             transportButton("plus", fs: fs) { controller.nudgeOffset(0.1) }
         }
     }
@@ -571,8 +616,8 @@ struct OverlayView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 14 * fs, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .shadow(color: .black.opacity(0.6), radius: 2)
+                .foregroundStyle(textColor.opacity(0.92))
+                .shadow(color: haloColor.opacity(0.6), radius: 2)
                 .frame(width: 22 * fs, height: 20 * fs)
                 .contentShape(Rectangle())
         }
@@ -591,16 +636,20 @@ struct OverlayView: View {
 
     private func backgroundLayer(radius: CGFloat) -> some View {
         // The Background-opacity knob drives the *idle* face only. Hover uses a
-        // fixed designed darkness: with Liquid Glass the glass carries the
-        // presence (thin scrim); the legacy material needs more help.
+        // fixed designed presence: with Liquid Glass the glass carries it (thin
+        // scrim); the legacy material needs more help. The scrim and the
+        // material's scheme both take the pole opposite the text, so a dark
+        // text colour brings up a light card rather than dark-on-dark.
         let hoverScrim = glassActive ? 0.14 : 0.30
         return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(.black.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))
+                .fill(appearance.contrast.opacity(hovered ? hoverScrim : appearance.backgroundOpacity))
             hoverSurface(radius: radius)
                 .opacity(hovered ? 1 : 0)
         }
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, appearance.surfaceScheme)
+        // The drop shadow stays black either way — shadows are cast light, not
+        // a second surface.
         .shadow(color: .black.opacity(hovered ? 0.35 : 0), radius: 22, y: 9)
     }
 
@@ -630,11 +679,46 @@ struct OverlayView: View {
     private func legacyHoverSurface(_ shape: RoundedRectangle) -> some View {
         ZStack {
             shape.fill(.ultraThinMaterial).opacity(0.5)
+            // The top-edge sheen is a lit edge on a dark card; on a light one
+            // the same stroke in the text's pole reads as a fine border.
             shape.strokeBorder(
-                LinearGradient(colors: [.white.opacity(0.12), .white.opacity(0.0)],
+                LinearGradient(colors: [textColor.opacity(0.12), textColor.opacity(0.0)],
                                startPoint: .top, endPoint: .center),
                 lineWidth: 1
             )
         }
+    }
+}
+
+/// The stage's clip: tight top and bottom, `bleed` points of slack on each
+/// side. Exists because `.clipped()` is all-or-nothing and only one of the two
+/// axes here is a layout rule.
+private struct SideBleedRect: Shape {
+    let bleed: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: -bleed, dy: 0))
+    }
+}
+
+private extension View {
+    /// The hero slot's bloom: the same pole as the tight legibility rim, just
+    /// wide and soft. Emphasis deepens what the text is read against instead
+    /// of laying a colour on top of it — a pale bloom under pale text can only
+    /// register on a wallpaper darker than itself, which is exactly the case
+    /// where the focus line was already winning. This way the two poles fail
+    /// in opposite directions: the bloom pools shadow under light text on a
+    /// bright desktop, and lifts dark text on a dim one.
+    ///
+    /// Deliberately lighter than the rim it extends. The rim has to *define* a
+    /// glyph edge, but the bloom only has to weight the slot the eye is already
+    /// being pulled to by a 22pt bold line — and a wide shadow at rim strength
+    /// stops reading as depth and starts reading as a dark smear behind the
+    /// lyrics. Radius comes from `OverlayMetrics` so the blur can't grow into
+    /// the card's clip. One tuning point shared by the focus line and the intro
+    /// countdown, so retuning one can't strand the other.
+    func heroGlow(_ halo: Color, fs: CGFloat, on: Bool = true) -> some View {
+        shadow(color: on ? halo.opacity(0.18) : .clear,
+               radius: on ? OverlayMetrics.heroGlowRadius(fs: fs) : 0)
     }
 }

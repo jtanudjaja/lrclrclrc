@@ -13,9 +13,24 @@ enum OverlayMetrics {
     static let footerH: CGFloat = 32         // one row: transport centered, timing trailing
     static let lineUnit: CGFloat = 25.5      // nominal context-line slot (15pt font * 1.7)
     static let stackSpacing: CGFloat = 16    // summed inter-zone gaps
+    static let hPadding: CGFloat = 48        // 24 leading + 24 trailing
     // The one-row footer needs ~250pt; 320 − 48 padding = 272 available, so a
     // too-narrow footer is impossible by construction (no squeezed variant).
     static let minWidthBase: CGFloat = 320
+
+    /// Blur radius for the hero line's bloom, sized against the side inset so
+    /// the pool stays inside the card's rounded clip at any window width. A
+    /// narrow window is the case that matters: the focus line then runs the
+    /// full content width, so its bloom starts at the padding rather than
+    /// somewhere in the middle of it and the whole inset is all the room it
+    /// gets.
+    static func heroGlowRadius(fs: CGFloat) -> CGFloat { (hPadding / 2) / 3 * fs }
+
+    /// How far past its nominal radius the bloom actually paints. A Core
+    /// Graphics shadow carries visible alpha to roughly three times its radius,
+    /// so anything that clips the band has to be held off by this much to cut
+    /// nothing — see the band's mask in `OverlayView`.
+    static func heroGlowBleed(fs: CGFloat) -> CGFloat { heroGlowRadius(fs: fs) * 3 }
 
     /// Floor guarantee: hero + this many context lines always fit.
     static let minContextLines = 2

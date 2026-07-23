@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var fontScaleCancellable: AnyCancellable?
     private var linesCancellable: AnyCancellable?
 
-    private var sourceItems: [PlayerSourceKind: NSMenuItem] = [:]
+    private let sourceSubmenu = NSMenu()
     private var offsetItem: NSMenuItem?
     private var launchAtLoginItem: NSMenuItem?
 
@@ -53,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let panel = OverlayPanel(contentView: container)
         self.panel = panel
+        // The card is chrome, not a window the user manages — keep it out of
+        // the Window menu that the real windows live in.
+        panel.isExcludedFromWindowsMenu = true
         // Resizing is fully native: an ordinary activatable titled window
         // gets the system's own edge handling and resize cursors (including
         // the slightly-outside grab area), exactly like any other app's
@@ -129,8 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mode = DisplayMode(rawValue: Settings.displayMode) ?? .overlay
         setDisplayMode(mode)
 
-        let kind = controller.currentSource
-        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+        rebuildSourceMenu()
         updateOffsetTitle()
     }
 
@@ -164,6 +166,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a")
         editItem.submenu = editMenu
 
+        // The standard Window menu is what makes an ordinary window behave
+        // ordinarily: ⌘W to close, ⌘M to minimize, zoom, and a live list of
+        // open windows. (Close sits here rather than in a File menu — this app
+        // has no documents, so it has no File menu.)
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "Bring All to Front",
+                           action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        windowItem.submenu = windowMenu
+        NSApp.windowsMenu = windowMenu
+
         NSApp.mainMenu = mainMenu
     }
 
@@ -180,19 +198,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displaySubmenu.addItem(modeItem("Hidden", .hidden))
         menu.addItem(submenu("Show Lyrics In", displaySubmenu))
 
-        // Which player to follow (radio): Auto / Apple Music / Spotify.
-        let sourceSubmenu = NSMenu()
-        sourceSubmenu.addItem(sourceItem("Auto", .auto))
-        sourceSubmenu.addItem(sourceItem("Apple Music", .appleMusic))
-        sourceSubmenu.addItem(sourceItem("Spotify", .spotify))
-        menu.addItem(submenu("Source", sourceSubmenu))
+        // Which enabled player to follow (radio). Enabling players is a
+        // Preferences job; this menu only ever offers what's already enabled.
+        rebuildSourceMenu()
+        menu.addItem(submenu("Follow", sourceSubmenu))
 
         menu.addItem(makeItem("Full Lyrics…", #selector(openFullLyrics), "f"))
         menu.addItem(makeItem("Find Lyrics…", #selector(openFindLyrics), "l"))
         menu.addItem(makeItem("Preferences…", #selector(openPreferences), ""))
         menu.addItem(.separator())
-        menu.addItem(makeItem("Text Larger", #selector(enlarge), "+"))
-        menu.addItem(makeItem("Text Smaller", #selector(shrink), "-"))
 
         // Timing offset (fix lyrics that run early/late).
         let timingSubmenu = NSMenu()
@@ -242,12 +256,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    private func sourceItem(_ title: String, _ kind: PlayerSourceKind) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(selectSource(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = kind.rawValue
-        sourceItems[kind] = item
-        return item
+    /// Rebuilt rather than restated: enabling a player in Preferences changes
+    /// what this menu is allowed to offer, not just which row is ticked.
+    private func rebuildSourceMenu() {
+        sourceSubmenu.removeAllItems()
+
+        // Automatic is the default and the only entry that means anything with
+        // two players open, so it leads.
+        let auto = NSMenuItem(title: "Automatic", action: #selector(selectSource(_:)), keyEquivalent: "")
+        auto.target = self
+        auto.state = controller.followedSource == nil ? .on : .off
+        auto.toolTip = "Follow whichever enabled player is playing."
+        sourceSubmenu.addItem(auto)
+
+        let enabled = controller.enabledSources
+        if !enabled.isEmpty { sourceSubmenu.addItem(.separator()) }
+        for kind in enabled {
+            let item = NSMenuItem(title: kind.displayName,
+                                  action: #selector(selectSource(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = kind.rawValue
+            item.state = controller.followedSource == kind ? .on : .off
+            sourceSubmenu.addItem(item)
+        }
+
+        if enabled.isEmpty {
+            let hint = NSMenuItem(title: "No music app enabled", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            sourceSubmenu.addItem(.separator())
+            sourceSubmenu.addItem(hint)
+        }
     }
 
     // MARK: - Display mode
@@ -296,16 +334,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshFloor(growNow: true)
     }
 
-    // Text Larger / Smaller drive the same fontScale as the Preferences slider.
-    @objc private func enlarge() { appearance.fontScale = min(2.0, appearance.fontScale + 0.1) }
-    @objc private func shrink() { appearance.fontScale = max(0.7, appearance.fontScale - 0.1) }
+    // MARK: - Sources
 
-    // MARK: - Source
-
+    /// No represented object = the Automatic row.
     @objc private func selectSource(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let kind = PlayerSourceKind(rawValue: raw) else { return }
-        chooseSource(kind)
+        let kind = (sender.representedObject as? String).flatMap(PlayerSourceKind.init(rawValue:))
+        controller.followSource(kind)
+        rebuildSourceMenu()
     }
 
     // MARK: - Timing
@@ -349,11 +384,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openPreferences() {
         if let window = preferencesWindow { present(window); return }
-        let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(appearance: appearance, actions: self)))
+        let view = PreferencesView(appearance: appearance, controller: controller, actions: self)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "lrclrclrc Preferences"
-        window.styleMask = [.titled, .closable]
+        // An ordinary window in every respect the window server cares about:
+        // all three traffic lights, freely resizable, zoomable, minimizable to
+        // the Dock, and listed in the Window menu.
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
-        window.center()
+        // There is only ever one Preferences window — nothing to tab with.
+        window.tabbingMode = .disallowed
+        window.setContentSize(NSSize(width: 420, height: 520))
+        window.contentMinSize = NSSize(width: 380, height: 320)
+        // AppKit persists the frame under this name, so size and position
+        // survive both reopening and relaunches; centre only the first time.
+        // Restore first, *then* register the name: assigning an autosave name
+        // writes the current frame under it, which would clobber the saved one.
+        let autosave = "lrclrclrc.preferences"
+        if !window.setFrameUsingName(autosave) { window.center() }
+        _ = window.setFrameAutosaveName(autosave)
         preferencesWindow = window
         registerUtilityWindow(window)
         present(window)
@@ -444,14 +493,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Preferences actions (shared by the menu and the Preferences window)
 
 extension AppDelegate: PreferencesActions {
-    var currentSource: PlayerSourceKind { controller.currentSource }
     var currentDisplayMode: DisplayMode { displayMode }
     var isClickThroughOn: Bool { clickThrough }
     var isLaunchAtLoginOn: Bool { SMAppService.mainApp.status == .enabled }
 
-    func chooseSource(_ kind: PlayerSourceKind) {
-        controller.setSource(kind)
-        for (k, item) in sourceItems { item.state = (k == kind) ? .on : .off }
+    func chooseSourceEnabled(_ kind: PlayerSourceKind, enabled: Bool) {
+        controller.setSourceEnabled(enabled, for: kind)
+        rebuildSourceMenu()
+    }
+
+    func chooseFollowedSource(_ kind: PlayerSourceKind?) {
+        controller.followSource(kind)
+        rebuildSourceMenu()
     }
 
     func chooseDisplayMode(_ mode: DisplayMode) { setDisplayMode(mode) }
@@ -474,11 +527,12 @@ extension AppDelegate: PreferencesActions {
     func resetToDefaults() {
         appearance.fontScale = 1.0
         appearance.backgroundOpacity = 0.08
-        appearance.accent = .blue
+        appearance.textColor = .white
         appearance.alwaysShowControls = false
         setClickThrough(false)
         if isLaunchAtLoginOn { chooseLaunchAtLogin(false) }
-        chooseSource(.auto)
+        controller.resetSources()
+        rebuildSourceMenu()
         setDisplayMode(.overlay)
         panel?.resetFrame()
         refreshFloor(growNow: true)
