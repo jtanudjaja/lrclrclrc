@@ -286,20 +286,20 @@ struct OverlayView: View {
     /// dots + countdown. Rendered inside the teleprompter, never as its own
     /// screen — the surrounding lines stay visible and seekable.
     private func introSlot(countdown: Int, first: Bool, fs: CGFloat) -> some View {
-        HStack(spacing: 5 * fs) {
+        HStack(spacing: 6 * fs) {
             Text("♪")
-                .font(.system(size: 16 * fs, weight: .bold))
-                .foregroundStyle(.white.opacity(0.9))
-                .shadow(color: appearance.accent.color.opacity(0.3), radius: 8 * fs)
-            Circle().fill(.white.opacity(0.95)).frame(width: 4 * fs, height: 4 * fs)
-            Circle().fill(.white.opacity(0.65)).frame(width: 4 * fs, height: 4 * fs)
-            Circle().fill(.white.opacity(0.35)).frame(width: 4 * fs, height: 4 * fs)
+                .font(.system(size: 19 * fs, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: appearance.accent.color.opacity(0.35), radius: 11 * fs)
+            Circle().fill(.white).frame(width: 5 * fs, height: 5 * fs)
+            Circle().fill(.white.opacity(0.75)).frame(width: 5 * fs, height: 5 * fs)
+            Circle().fill(.white.opacity(0.5)).frame(width: 5 * fs, height: 5 * fs)
             Text(countdownLabel(countdown, first: first))
-                .font(.system(size: 10 * fs, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.5))
+                .font(.system(size: 13 * fs, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.95))
                 .padding(.leading, 3 * fs)
         }
-        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        .shadow(color: .black.opacity(0.75), radius: 2, y: 1)
         .frame(maxWidth: .infinity)
     }
 
