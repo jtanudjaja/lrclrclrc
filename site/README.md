@@ -27,9 +27,19 @@ but some browsers won't load the stylesheet that way.
 
 ## Publish on GitHub Pages
 
-Repo **Settings → Pages → Build and deployment**, source *Deploy from a branch*,
-branch `main`, folder `/site`. It'll go live at
-`https://jtanudjaja.github.io/lrclrclrc/`.
+Deployment is automated by `.github/workflows/pages.yml`. **One-time setup:**
+repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. The
+older *Deploy from a branch* option ignores the workflow, so it has to be
+switched.
+
+After that, any push to `main` that touches `site/**` builds and deploys, and
+the site lands at `https://jtanudjaja.github.io/lrclrclrc/`. Pull requests run
+the link check but don't deploy. You can also trigger a deploy by hand from the
+**Actions** tab (*Deploy site → Run workflow*).
+
+The workflow's `check` job walks every `.html` under `site/` and fails if any
+local `href`/`src` points at a file that isn't there — a mistyped stylesheet
+path would otherwise deploy cleanly and serve an unstyled page.
 
 ## Keeping it honest
 

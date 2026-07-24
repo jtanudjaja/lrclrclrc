@@ -1,0 +1,94 @@
+name: Deploy site
+
+# Publishes site/ to GitHub Pages.
+#
+# Requires the repo's Pages source to be set to "GitHub Actions":
+# Settings → Pages → Build and deployment → Source: GitHub Actions.
+# (The older "Deploy from a branch" setting ignores this workflow.)
+
+on:
+  push:
+    branches: [main]
+    # Swift commits shouldn't trigger a site deploy.
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one already in flight — a
+# half-applied deploy leaves Pages serving a mix of old and new files.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The site is plain static files, so there's nothing to build — but a
+      # mistyped stylesheet or asset path would deploy silently and serve an
+      # unstyled page, which is exactly the failure nobody notices. Catch it
+      # here instead, on PRs too.
+      - name: Local references resolve
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys, urllib.parse
+
+          root = pathlib.Path("site")
+          index = root / "index.html"
+          if not index.is_file():
+              sys.exit("site/index.html is missing — nothing to publish")
+
+          missing = []
+          for page in sorted(root.rglob("*.html")):
+              html = page.read_text(encoding="utf-8")
+              for ref in re.findall(r'(?:href|src)="([^"]+)"', html):
+                  if ref.startswith(("http://", "https://", "//", "#", "mailto:", "data:")):
+                      continue
+                  path = urllib.parse.unquote(ref.split("#")[0].split("?")[0])
+                  if not path:
+                      continue
+                  if not (page.parent / path).exists():
+                      missing.append(f"{page}: {ref}")
+
+          if missing:
+              print("Broken local references:")
+              for m in missing:
+                  print(f"  {m}")
+              sys.exit(1)
+
+          print("all local references resolve")
+          PY
+
+  deploy:
+    name: Deploy to Pages
+    # PRs get the check above, but only main publishes.
+    if: github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Upload site/
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
