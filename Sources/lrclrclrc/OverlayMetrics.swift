@@ -95,12 +95,13 @@ enum OverlayMetrics {
         return column >= min(titleRowWidth(title, fs: fs), content * titleFloor)
     }
 
-    /// Laid-out width of the source chip, tracking included. The chip is bare
-    /// text — no capsule, so no padding or border to account for.
+    /// Laid-out width of the source chip, tracking and padding included.
     static func sourceChipWidth(_ name: String, fs: CGFloat) -> CGFloat {
         let label = name.uppercased()
         return textWidth(label, font: sourceChipFont(fs: fs))
             + 0.6 * fs * CGFloat(label.count)  // tracking, which textWidth omits
+            + 14 * fs                          // horizontal padding
+            + 2                                // capsule border
     }
 
     /// True when the chip fits *after* the tile has taken its width, and the

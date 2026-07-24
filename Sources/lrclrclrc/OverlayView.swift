@@ -227,7 +227,9 @@ struct OverlayView: View {
             .foregroundStyle(textColor.opacity(0.6))
             .lineLimit(1)
             .fixedSize()
+            .padding(.horizontal, 7 * fs)
             .padding(.vertical, 2.5 * fs)
+            .overlay(Capsule().strokeBorder(textColor.opacity(0.2), lineWidth: 1))
     }
 
     // MARK: - Stage (one designed home per state)
