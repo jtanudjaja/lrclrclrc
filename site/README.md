@@ -51,10 +51,8 @@ signed, notarized release ever exists, that's the moment to add a download
 button, and not before.
 
 Every capability claimed on the page is checked against the source, not against
-this repo's README — the README has drifted (it still lists *Larger/Smaller*
-menu items and a ⌘, that the status menu doesn't have). If you change the menu
-(`AppDelegate.setupStatusItem`), the Preferences layout, or the timing offset
-steps, update the matching copy:
+this repo's README. If you change the menu (`AppDelegate.setupStatusItem`), the
+Preferences layout, or the timing offset steps, update the matching copy:
 
 - the menu mock in the **One menu** section
 - the feature grid
