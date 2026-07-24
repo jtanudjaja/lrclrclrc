@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One page, one entry. Bump <lastmod> when the page copy meaningfully
+     changes; a date that never moves is the same as no date, and a date that
+     moves on every deploy trains crawlers to ignore it. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://jtanudjaja.github.io/lrclrclrc/</loc>
+    <lastmod>2026-07-25</lastmod>
+  </url>
+</urlset>

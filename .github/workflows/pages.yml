@@ -39,22 +39,28 @@ jobs:
       - uses: actions/checkout@v4
 
       # The site is plain static files, so there's nothing to build — but a
-      # mistyped stylesheet or asset path would deploy silently and serve an
-      # unstyled page, which is exactly the failure nobody notices. Catch it
-      # here instead, on PRs too.
-      - name: Local references resolve
+      # mistyped path or a voided metadata block would deploy silently and
+      # serve a broken page, which is exactly the failure nobody notices.
+      # Catch it here instead, on PRs too.
+      - name: References and metadata resolve
         run: |
           python3 - <<'PY'
-          import pathlib, re, sys, urllib.parse
+          import json, pathlib, re, sys, urllib.parse
 
           root = pathlib.Path("site")
+          BASE = "https://jtanudjaja.github.io/lrclrclrc/"
+
           index = root / "index.html"
           if not index.is_file():
               sys.exit("site/index.html is missing — nothing to publish")
 
-          missing = []
+          problems = []
+
           for page in sorted(root.rglob("*.html")):
               html = page.read_text(encoding="utf-8")
+
+              # Relative href/src: a mistyped stylesheet path serves an
+              # unstyled page rather than an error.
               for ref in re.findall(r'(?:href|src)="([^"]+)"', html):
                   if ref.startswith(("http://", "https://", "//", "#", "mailto:", "data:")):
                       continue
@@ -62,15 +68,53 @@ jobs:
                   if not path:
                       continue
                   if not (page.parent / path).exists():
-                      missing.append(f"{page}: {ref}")
+                      problems.append(f"{page}: broken local reference {ref}")
 
-          if missing:
-              print("Broken local references:")
-              for m in missing:
-                  print(f"  {m}")
+              # Absolute URLs aimed back at this site — canonical, og:image,
+              # JSON-LD. Crawlers require them absolute, which puts them out of
+              # reach of the check above, so a renamed asset breaks share cards
+              # with no visible symptom on the page itself.
+              for url in re.findall('"(' + re.escape(BASE) + '[^"]*)"', html):
+                  rel = urllib.parse.unquote(url[len(BASE):].split("#")[0].split("?")[0])
+                  if not rel:
+                      continue  # the site root
+                  if not (root / rel).exists():
+                      problems.append(f"{page}: self-referencing URL points at nothing — {url}")
+
+              # One stray comma voids the entire structured-data block, and
+              # nothing on the rendered page changes.
+              for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
+                  try:
+                      json.loads(block)
+                  except json.JSONDecodeError as exc:
+                      problems.append(f"{page}: invalid JSON-LD — {exc}")
+
+              if page == index:
+                  for tag, pattern in (
+                      ("canonical", f'<link rel="canonical" href="{BASE}">'),
+                      ("og:image", '<meta property="og:image" content="'),
+                      ("description", '<meta name="description" content="'),
+                  ):
+                      if pattern not in html:
+                          problems.append(f"{page}: missing or altered {tag}")
+
+          # Crawler files. Absent, they fail open — the site just quietly stops
+          # advertising itself.
+          for name in ("robots.txt", "sitemap.xml"):
+              if not (root / name).is_file():
+                  problems.append(f"site/{name} is missing")
+
+          sitemap = root / "sitemap.xml"
+          if sitemap.is_file() and f"<loc>{BASE}</loc>" not in sitemap.read_text(encoding="utf-8"):
+              problems.append(f"site/sitemap.xml doesn't list {BASE}")
+
+          if problems:
+              print("Site check failed:")
+              for p in problems:
+                  print(f"  {p}")
               sys.exit(1)
 
-          print("all local references resolve")
+          print("references, metadata and crawler files all check out")
           PY
 
   deploy:

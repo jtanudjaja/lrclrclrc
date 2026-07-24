@@ -1,0 +1,13 @@
+# Nothing here is private and nothing is expensive to crawl — the whole site is
+# one static page. Open it up and point at the sitemap.
+#
+# Caveat worth knowing: crawlers only read robots.txt from the origin root, so
+# on a project Pages site this file lives at /lrclrclrc/robots.txt and is never
+# fetched. It's here so it's already correct the day this moves to a custom
+# domain (or to jtanudjaja.github.io itself). Until then the sitemap has to be
+# submitted by hand in Google Search Console / Bing Webmaster Tools.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://jtanudjaja.github.io/lrclrclrc/sitemap.xml

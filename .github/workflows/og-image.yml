@@ -1,0 +1,113 @@
+name: OG image
+
+# Regenerates site/assets/og.png — the card Slack, iMessage, Discord, X and
+# LinkedIn render when someone posts the link — and commits it if it changed.
+#
+# The PNG is a committed build product, so it can go stale silently: nothing
+# about a wrong share card breaks the page, and nobody sees it until it's
+# already been posted somewhere. Hence the automatic trigger.
+#
+# macOS only. The generator draws with AppKit, so this can't move to the
+# ubuntu runners the rest of the site jobs use.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only the files the render actually reads. site/index.html is deliberately
+    # absent: the card's wording is hardcoded in the generator, so editing the
+    # page's headline changes nothing here — it means someone has to go edit
+    # the generator, which is itself on this list.
+    paths:
+      - 'scripts/make-og-image.swift'
+      - 'site/styles.css'
+      - '.github/workflows/og-image.yml'
+
+permissions:
+  contents: write   # commit the regenerated card
+  actions: write    # kick off Deploy site afterwards (see the last step)
+
+# Never cancel a run that may be midway through pushing a commit.
+concurrency:
+  group: og-image
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render share card
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render
+        run: swift scripts/make-og-image.swift site/assets/og.png
+
+      # A headless runner that can't get at fonts or a drawing context won't
+      # necessarily fail — it can hand back a perfectly valid blank rectangle.
+      # Check the shape, and check it isn't empty: an all-black 1200×630 PNG
+      # compresses to a couple of KB, so the floor separates the two cases.
+      - name: Verify output
+        run: |
+          card=site/assets/og.png
+          test -f "$card" || { echo "::error::$card was not written"; exit 1; }
+
+          w=$(sips -g pixelWidth  "$card" | awk '/pixelWidth/  {print $2}')
+          h=$(sips -g pixelHeight "$card" | awk '/pixelHeight/ {print $2}')
+          bytes=$(stat -f%z "$card")
+
+          echo "rendered ${w}×${h}, $((bytes / 1024)) KB"
+
+          # 1200×630 is what the og:image:width/height tags in index.html
+          # promise, and what summary_large_image expects.
+          if [ "$w" != "1200" ] || [ "$h" != "630" ]; then
+            echo "::error::expected 1200x630, got ${w}x${h}"
+            exit 1
+          fi
+          if [ "$bytes" -lt 51200 ]; then
+            echo "::error::only $((bytes / 1024)) KB — the render is probably blank"
+            exit 1
+          fi
+
+      # Uploaded on every run, changed or not, so a dispatch can be used purely
+      # to preview the card without touching the repo.
+      - name: Upload for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: og-image
+          path: site/assets/og.png
+          if-no-files-found: error
+
+      - name: Did it change?
+        id: diff
+        run: |
+          if git diff --quiet -- site/assets/og.png; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "card is unchanged — nothing to commit"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "card changed"
+          fi
+
+      - name: Commit
+        if: steps.diff.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/assets/og.png
+          # Two -m flags rather than an embedded newline: a YAML block scalar
+          # would carry this indentation into the commit body.
+          git commit \
+            -m "Regenerate share card" \
+            -m "Rendered by .github/workflows/og-image.yml from ${{ github.sha }}."
+          git push
+
+      # A push made with GITHUB_TOKEN doesn't trigger other workflows — that's
+      # GitHub's guard against workflows setting each other off in a loop. So
+      # the commit above would sit on main un-deployed, and the live card would
+      # stay stale, which is the exact failure this workflow exists to prevent.
+      # Ask for the deploy explicitly instead.
+      - name: Deploy the new card
+        if: steps.diff.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main

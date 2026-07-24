@@ -3,19 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lrclrclrc — a time-synced lyrics overlay for macOS</title>
-<meta name="description" content="A tiny macOS menu-bar app that follows Apple Music and Spotify, pulls time-synced lyrics from LRCLIB, and highlights each line in a translucent card that stays on top of every app, Space, and full-screen window.">
+<!-- Title under ~65 characters, description under ~160, or search results
+     truncate them mid-word. Both name the players on purpose: nobody searches
+     for "lrclrclrc", they search for lyrics on a Mac. -->
+<title>lrclrclrc — macOS synced lyrics overlay for Apple Music &amp; Spotify</title>
+<meta name="description" content="Free macOS menu-bar app: follows Apple Music and Spotify, pulls time-synced lyrics from LRCLIB, and floats them over every app, Space and full-screen window.">
 <meta name="theme-color" content="#08090c">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<link rel="canonical" href="https://jtanudjaja.github.io/lrclrclrc/">
 
+<!-- Share cards. Absolute URLs throughout: crawlers fetch this markup out of
+     context and won't resolve a relative og:image. Regenerate the card with
+     `swift scripts/make-og-image.swift site/assets/og.png` if the copy below
+     or the page's palette changes. -->
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="lrclrclrc">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://jtanudjaja.github.io/lrclrclrc/">
 <meta property="og:title" content="lrclrclrc — a time-synced lyrics overlay for macOS">
 <meta property="og:description" content="A native macOS menu-bar lyrics overlay for Apple Music and Spotify. Free, open source, no API key.">
-<meta property="og:image" content="assets/icon-512.png">
+<meta property="og:image" content="https://jtanudjaja.github.io/lrclrclrc/assets/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The lrclrclrc app icon beside the words “Lyrics that float over everything”, next to a translucent card with one line lit up.">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="lrclrclrc — a time-synced lyrics overlay for macOS">
+<meta name="twitter:description" content="A native macOS menu-bar lyrics overlay for Apple Music and Spotify. Free, open source, no API key.">
+<meta name="twitter:image" content="https://jtanudjaja.github.io/lrclrclrc/assets/og.png">
+<meta name="twitter:image:alt" content="The lrclrclrc app icon beside the words “Lyrics that float over everything”, next to a translucent card with one line lit up.">
 
-<link rel="icon" href="assets/icon-180.png" sizes="180x180">
+<link rel="icon" href="assets/icon-180.png" sizes="180x180" type="image/png">
+<link rel="icon" href="assets/icon-512.png" sizes="512x512" type="image/png">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="stylesheet" href="styles.css">
+
+<!-- Structured data. Everything below restates something already visible on the
+     page — that's the rule, and it's also what keeps it from being spam. No
+     rating, no review count, no download URL: the app is unsigned and there is
+     nothing to download, so claiming otherwise here would be a lie in a format
+     nobody proofreads. Keep the FAQ block in step with the <details> list. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://jtanudjaja.github.io/lrclrclrc/#app",
+      "name": "lrclrclrc",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "macOS 13 Ventura or later",
+      "url": "https://jtanudjaja.github.io/lrclrclrc/",
+      "image": "https://jtanudjaja.github.io/lrclrclrc/assets/og.png",
+      "description": "A macOS menu-bar app that follows Apple Music and Spotify, pulls time-synced lyrics from LRCLIB, and highlights each line in a translucent card that stays above every app, Space and full-screen window.",
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/licenses/MIT",
+      "sameAs": "https://github.com/jtanudjaja/lrclrclrc",
+      "author": {
+        "@type": "Person",
+        "name": "Jonathan Tanudjaja",
+        "url": "https://github.com/jtanudjaja"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Time-synced lyrics for Apple Music and Spotify",
+        "Floating overlay that follows you across Spaces and full-screen apps",
+        "Menu-bar mode showing just the current line",
+        "Click or scrub the lyrics to seek playback",
+        "Per-song timing offset, remembered per track",
+        "Click-through mode that ignores the mouse",
+        "Paste your own .lrc when a song isn't in LRCLIB"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://jtanudjaja.github.io/lrclrclrc/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Why not just use Apple Music's own synced lyrics?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "They're licensed and locked inside the Music app — no API exposes them. So, like every DIY overlay, this leans on a third-party source (LRCLIB). The trade-off is real: coverage and sync quality vary by song, which is exactly why the per-song timing offset and the paste-your-own escape hatch exist."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What data leaves my machine?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Only the track signature — title, artist, album, duration — sent to LRCLIB to look up lyrics. No account, no analytics, no telemetry. Fetched lyrics are cached to disk so repeat plays don't re-query."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why isn't there a .dmg to download?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A download that opens cleanly has to be signed and notarized, which needs an Apple Developer account at $99/yr. Without one, macOS quarantines the download and won't open it until the flag is cleared with a Terminal command. An app compiled on your own Mac is never quarantined. A signed release will go on GitHub if that ever changes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How finished is this?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It's a personal project that does what's described on this page and nothing more. There's no packaged release, no auto-update, and no support promised. The source is MIT — read it, fork it, file an issue."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work with the Spotify web player?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Detection goes through AppleScript, and a browser tab isn't scriptable that way. The desktop Spotify app is, so use that one."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will it cover my screen while I work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Only if you want it to. At rest the card is a near-invisible scrim with self-shadowed text; chrome fades in on hover. Turn on Click-Through and it stops catching the mouse entirely, or switch to Menu Bar mode for one line up top."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Intel or Apple silicon?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Either — you don't have to pick. make install compiles natively for whichever Mac you run it on. macOS 13 Ventura or later."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
