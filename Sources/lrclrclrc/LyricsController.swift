@@ -21,6 +21,13 @@ enum StagePhase: Equatable {
 final class LyricsController: ObservableObject {
     @Published var title = "lrclrclrc"
     @Published var artist = "Play something…"
+    /// The current track's cover, once it has arrived — nil until then, and
+    /// nil forever for a track that hasn't got one. The header keeps its tile
+    /// either way, so this filling in never moves the layout.
+    @Published private(set) var artwork: NSImage?
+    /// The player the lyrics are following right now ("Apple Music"), for the
+    /// header's chip. Empty whenever no track is on screen.
+    @Published private(set) var sourceName = ""
     @Published var prevLine = ""
     @Published var currentLine = ""
     @Published var nextLine = ""
@@ -90,6 +97,7 @@ final class LyricsController: ObservableObject {
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var lyricsTask: Task<Void, Never>?
+    private var artworkTask: Task<Void, Never>?
     private var observerTokens: [NSObjectProtocol] = []
     private var wakeToken: NSObjectProtocol?
     private var pollInFlight = false        // coalesce: skip if a read is running
@@ -108,6 +116,7 @@ final class LyricsController: ObservableObject {
         pollTimer?.invalidate()
         tickTimer?.invalidate()
         lyricsTask?.cancel()
+        artworkTask?.cancel()
         let center = DistributedNotificationCenter.default()
         for token in observerTokens { center.removeObserver(token) }
         if let wakeToken { NSWorkspace.shared.notificationCenter.removeObserver(wakeToken) }
@@ -227,6 +236,7 @@ final class LyricsController: ObservableObject {
         title = "lrclrclrc"
         artist = ""
         clearTrack()
+        clearArtwork()
         status = ""
         lastTrackId = ""
         isPlaying = false
@@ -251,6 +261,7 @@ final class LyricsController: ObservableObject {
             title = "lrclrclrc"
             artist = ""
             clearTrack()
+            clearArtwork()
             status = ""
             lastTrackId = ""
             isPlaying = false
@@ -268,6 +279,7 @@ final class LyricsController: ObservableObject {
             title = "Nothing playing"
             artist = ""
             clearTrack()
+            clearArtwork()
             status = ""
             lastTrackId = ""
             isPlaying = false
@@ -277,6 +289,9 @@ final class LyricsController: ObservableObject {
         case .ok:
             notOkStreak = 0
             permissionNeeded = false
+            // Guarded: this runs on every poll, and republishing an unchanged
+            // string would invalidate the overlay once a second for nothing.
+            if sourceName != kind.displayName { sourceName = kind.displayName }
         }
 
         // Namespace keys by source so Apple Music / Spotify ids never collide.
@@ -306,6 +321,7 @@ final class LyricsController: ObservableObject {
         currentIndex = -1
         retryAttempt = 0 // fresh track, fresh backoff
         offset = offsets.offset(for: key)
+        loadArtwork(for: key)
 
         // A manual override wins over anything from the network.
         if let manual = overrides.lyrics(for: key) {
@@ -336,6 +352,64 @@ final class LyricsController: ObservableObject {
         fetchLyrics(for: key, meta: TrackMeta(
             title: np.title, artist: np.artist, album: np.album, duration: np.duration
         ))
+    }
+
+    // MARK: - Album art
+
+    /// Fetch the cover for a freshly-changed track. Three hops, and every one
+    /// of them re-checks that the track hasn't moved on: the AppleScript read
+    /// on the poll queue, an optional network fetch for the players that answer
+    /// with a URL, and the ImageIO decode. A stale answer arriving after the
+    /// user skipped would otherwise caption the new song with the old cover.
+    ///
+    /// Unlike the lyrics fetch there is no retry and no cache. A cover is
+    /// decoration — a miss costs the tile its picture and nothing else, which
+    /// isn't worth a backoff timer or a disk store to recover.
+    private func loadArtwork(for key: String) {
+        artworkTask?.cancel()
+        artwork = nil
+        guard let player = active else { return }
+        pollQueue.async { [weak self] in
+            let ref = player.artwork()
+            DispatchQueue.main.async {
+                guard let self, key == self.lastTrackId else { return }
+                switch ref {
+                case .data(let data): self.decodeArtwork(data, for: key)
+                case .url(let url): self.downloadArtwork(url, for: key)
+                case nil: break
+                }
+            }
+        }
+    }
+
+    private func downloadArtwork(_ url: URL, for key: String) {
+        artworkTask = Task { [weak self] in
+            guard let (data, response) = try? await URLSession.shared.data(from: url),
+                  (response as? HTTPURLResponse)?.statusCode == 200
+            else { return }
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run { self.decodeArtwork(data, for: key) }
+        }
+    }
+
+    /// Decode off the main thread — a cover is a full-size JPEG and the overlay
+    /// is animating at 10fps while this runs.
+    private func decodeArtwork(_ data: Data, for key: String) {
+        artworkTask = Task.detached(priority: .utility) { [weak self] in
+            let image = Artwork.thumbnail(from: data)
+            guard !Task.isCancelled, let image, let self else { return }
+            await MainActor.run {
+                guard key == self.lastTrackId else { return }
+                self.artwork = image
+            }
+        }
+    }
+
+    private func clearArtwork() {
+        artworkTask?.cancel()
+        artworkTask = nil
+        artwork = nil
+        sourceName = ""
     }
 
     // MARK: - Lyrics fetch (with retry on failure)

@@ -130,19 +130,44 @@ struct OverlayView: View {
 
     // MARK: - Header (measured, never truncated, never resizes the window)
 
+    /// Art tile · title over artist · source chip — the shape a player's
+    /// now-playing bar has, so the card reads as one at a glance instead of as
+    /// a caption above some lyrics.
+    ///
+    /// Everything but the title column is furniture, and furniture is what a
+    /// narrow card drops (`OverlayMetrics.artFits` / `sourceChipFits`): the
+    /// title always keeps the majority of the row, and it still wraps rather
+    /// than truncating, so no width can clip a song's name. The two rows are
+    /// the two the floor already reserves, and the tile is shorter than they
+    /// are, so none of this can grow the header at the stage's expense.
     @ViewBuilder
     private func headerView(fs: CGFloat, cardWidth: CGFloat) -> some View {
-        let oneRow = controller.artist.isEmpty || OverlayMetrics.headerFitsOneRow(
-            title: controller.title, artist: controller.artist, fs: fs, cardWidth: cardWidth
-        )
-        // Empty states dim the header — the stage carries the message.
+        // Empty states dim the header — the stage carries the message — and
+        // drop the furniture with it: a tile and a player chip beside "Nothing
+        // playing" would be captioning a track that isn't there.
         let dimmed = controller.stagePhase == .idle || controller.stagePhase == .permission
-        Group {
-            if oneRow {
-                headerOneRow(fs: fs)
-            } else {
-                headerSplit(fs: fs)
+        let title = controller.title
+        let showArt = !dimmed && OverlayMetrics.artFits(title: title, cardWidth: cardWidth, fs: fs)
+        let chip = controller.sourceName
+        let showChip = !dimmed
+            && OverlayMetrics.sourceChipFits(chip, title: title, cardWidth: cardWidth, fs: fs)
+
+        HStack(spacing: OverlayMetrics.artGap * fs) {
+            if showArt { artTile(fs: fs) }
+            VStack(alignment: .leading, spacing: 1 * fs) {
+                Text(title)
+                    .font(.system(size: 11 * fs, weight: .semibold))
+                    .foregroundColor(textColor.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
+                if !controller.artist.isEmpty {
+                    Text(controller.artist)
+                        .font(.system(size: 10 * fs))
+                        .foregroundColor(textColor.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if showChip { sourceChip(chip, fs: fs) }
         }
         .opacity(dimmed ? 0.55 : 1)
         .shadow(color: haloColor.opacity(0.75), radius: 2, y: 1)
@@ -152,42 +177,52 @@ struct OverlayView: View {
         .overlay(WindowDragSurface())
     }
 
-    private func headerOneRow(fs: CGFloat) -> some View {
-        var text = Text(Image(systemName: "music.note"))
-            .font(.system(size: 8.5 * fs, weight: .semibold))
-            .foregroundColor(textColor.opacity(0.45))
-        text = text + Text("  \(controller.title)")
-            .font(.system(size: 11 * fs, weight: .semibold))
-            .foregroundColor(textColor.opacity(0.9))
-        if !controller.artist.isEmpty {
-            text = text + Text("   ·   \(controller.artist)")
-                .font(.system(size: 11 * fs, weight: .regular))
-                .foregroundColor(textColor.opacity(0.55))
-        }
-        return text
-            .tracking(0.2 * fs)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity)
+    /// The cover, or the slot it will land in. The tile is drawn whether or not
+    /// the image has arrived — art is fetched per track and can land a moment
+    /// late (or never, for a podcast or a local file), and a tile that pops into
+    /// existence would shove the title sideways mid-song.
+    private func artTile(fs: CGFloat) -> some View {
+        let side = OverlayMetrics.artTile * fs
+        let shape = RoundedRectangle(cornerRadius: 6 * fs, style: .continuous)
+        return shape
+            .fill(haloColor.opacity(0.35))
+            .frame(width: side, height: side)
+            .overlay {
+                if let art = controller.artwork {
+                    Image(nsImage: art)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: side, height: side)
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 11 * fs, weight: .semibold))
+                        .foregroundStyle(textColor.opacity(0.5))
+                }
+            }
+            .clipShape(shape)
+            // Square covers are the rule, not the guarantee — the rim keeps a
+            // pale cover from dissolving into a pale card, same job it does on
+            // the chips.
+            .overlay(shape.strokeBorder(textColor.opacity(0.18), lineWidth: 1))
+            .animation(.easeInOut(duration: 0.3), value: controller.artwork != nil)
     }
 
-    private func headerSplit(fs: CGFloat) -> some View {
-        VStack(spacing: 1 * fs) {
-            (Text(Image(systemName: "music.note"))
-                .font(.system(size: 8.5 * fs, weight: .semibold))
-                .foregroundColor(textColor.opacity(0.45))
-             + Text("  \(controller.title)")
-                .font(.system(size: 11 * fs, weight: .semibold))
-                .foregroundColor(textColor.opacity(0.9)))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(controller.artist)
-                .font(.system(size: 10 * fs))
-                .foregroundColor(textColor.opacity(0.55))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
+    /// Which player these lyrics are following. Sits at the header's trailing
+    /// edge on the halo's pole, like the other small labels on the card.
+    private func sourceChip(_ name: String, fs: CGFloat) -> some View {
+        Text(name.uppercased())
+            .font(.system(size: 8.5 * fs, weight: .semibold))
+            .tracking(0.6 * fs)
+            .foregroundStyle(textColor.opacity(0.6))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7 * fs)
+            .padding(.vertical, 2.5 * fs)
+            .background(
+                Capsule()
+                    .fill(haloColor.opacity(0.32))
+                    .overlay(Capsule().strokeBorder(textColor.opacity(0.2), lineWidth: 1))
+            )
     }
 
     // MARK: - Stage (one designed home per state)
@@ -579,18 +614,38 @@ struct OverlayView: View {
             }
     }
 
-    // MARK: - Footer (one constant row: transport + timing as one centered group)
+    // MARK: - Footer (one constant row: transport leading, timing trailing)
 
+    /// Transport at the leading edge, timing at the trailing one, pushed apart
+    /// by a spacer — the two ends of a player's control bar, matching the
+    /// header's own leading/trailing split so the card has one alignment story
+    /// rather than a centered row between two justified ones.
+    ///
+    /// The spacer is also a stronger collision guarantee than the centered
+    /// cluster it replaces. That version spaced the two groups by a fixed
+    /// 26pt×fs and relied on the floor width being generous enough; this one
+    /// simply absorbs whatever room is left, and the groups themselves got
+    /// tighter (~200pt×fs together, against 272pt×fs of content at the floor).
     private func footerRow(fs: CGFloat, cardWidth: CGFloat, visible: Bool) -> some View {
-        // One centered cluster — transport beside timing — so the two can never
-        // collide (~250pt×fs total, guaranteed by the floor width). The timing
-        // slot is always reserved (opacity only), so sync state shifts nothing.
-        HStack(spacing: 26 * fs) {
-            HStack(spacing: 24 * fs) {
-                transportButton("backward.fill", fs: fs) { controller.previousTrack() }
-                transportButton(controller.isPlaying ? "pause.fill" : "play.fill", fs: fs) { controller.playPause() }
-                transportButton("forward.fill", fs: fs) { controller.nextTrack() }
+        HStack(spacing: 0) {
+            // Play/pause leads: it's the button being reached for, and the one
+            // whose glyph also reports the state. Prev/next recede to the
+            // weight of the lyrics' own context lines.
+            HStack(spacing: 10 * fs) {
+                transportButton("backward.fill", fs: fs, size: 12.5, opacity: 0.6) {
+                    controller.previousTrack()
+                }
+                transportButton(controller.isPlaying ? "pause.fill" : "play.fill",
+                                fs: fs, size: 15.5, opacity: 1) {
+                    controller.playPause()
+                }
+                transportButton("forward.fill", fs: fs, size: 12.5, opacity: 0.6) {
+                    controller.nextTrack()
+                }
             }
+            Spacer(minLength: 12 * fs)
+            // The timing slot is always reserved (opacity only), so a track
+            // going from synced to unsynced shifts nothing in the row.
             timingCluster(fs)
                 .opacity(controller.isSynced ? 1 : 0)
                 .allowsHitTesting(controller.isSynced && visible)
@@ -602,21 +657,29 @@ struct OverlayView: View {
         .background(WindowDragSurface())
     }
 
+    /// The per-track sync nudge, as a quiet trailing readout. Monospaced so a
+    /// held −/＋ reads as a number counting rather than a label reflowing, and
+    /// width-floored so crossing into two digits doesn't shove the buttons.
     private func timingCluster(_ fs: CGFloat) -> some View {
-        HStack(spacing: 8 * fs) {
-            transportButton("minus", fs: fs) { controller.nudgeOffset(-0.1) }
+        HStack(spacing: 6 * fs) {
+            transportButton("minus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(-0.1) }
             Text(String(format: "%+.1fs", controller.offset))
-                .font(.system(size: 10.5 * fs, weight: .medium).monospacedDigit())
-                .foregroundStyle(textColor.opacity(0.8))
-            transportButton("plus", fs: fs) { controller.nudgeOffset(0.1) }
+                .font(.system(size: 10 * fs, weight: .medium, design: .monospaced))
+                .foregroundStyle(textColor.opacity(0.55))
+                .frame(minWidth: 40 * fs)
+            transportButton("plus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(0.1) }
         }
     }
 
-    private func transportButton(_ symbol: String, fs: CGFloat, action: @escaping () -> Void) -> some View {
+    /// The hit target stays a constant 22×20pt×fs whatever the glyph inside it
+    /// weighs — emphasis is the picture's job, not the button's.
+    private func transportButton(_ symbol: String, fs: CGFloat, size: CGFloat = 14,
+                                 opacity: Double = 0.92,
+                                 action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14 * fs, weight: .semibold))
-                .foregroundStyle(textColor.opacity(0.92))
+                .font(.system(size: size * fs, weight: .semibold))
+                .foregroundStyle(textColor.opacity(opacity))
                 .shadow(color: haloColor.opacity(0.6), radius: 2)
                 .frame(width: 22 * fs, height: 20 * fs)
                 .contentShape(Rectangle())

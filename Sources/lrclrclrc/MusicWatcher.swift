@@ -42,6 +42,44 @@ enum PlayerSourceKind: String, CaseIterable {
         }
     }
 
+    /// How the player answers "what's the cover?". Apple Music keeps the image
+    /// in the library and hands over the bytes; Spotify streams it and hands
+    /// over a CDN URL. The parse differs, so the script has to say which.
+    enum ArtworkReply { case bytes, url }
+
+    var artworkReply: ArtworkReply {
+        switch self {
+        case .appleMusic: return .bytes
+        case .spotify: return .url
+        }
+    }
+
+    /// The body of the artwork script, run inside the player's `tell` block.
+    /// Every path returns — an empty string means "no cover", which is an
+    /// ordinary answer (a podcast, a local file, a track still loading) and
+    /// never an error the user should see.
+    var artworkScriptBody: String {
+        switch self {
+        case .appleMusic:
+            // `raw data` is the image file as stored; `data` is the same cover
+            // wrapped as a picture, which some library items carry instead.
+            // Whichever arrives, ImageIO is the one deciding if it decodes.
+            return """
+              set t to current track
+              if (count of artworks of t) is 0 then return ""
+              try
+                return raw data of artwork 1 of t
+              on error
+                return data of artwork 1 of t
+              end try
+            """
+        case .spotify:
+            return """
+              return (artwork url of current track) as string
+            """
+        }
+    }
+
     /// Multiplier turning the app's duration unit into seconds.
     var durationScale: Double {
         switch self {
@@ -68,9 +106,21 @@ struct SourceState: Identifiable, Equatable {
     var id: PlayerSourceKind { kind }
 }
 
+/// Where a track's cover came from. The two players answer differently and
+/// neither answer should be resolved on the script queue: Apple Music hands
+/// back the image bytes inline (decode them off the queue), Spotify hands back
+/// a URL (fetching it there would block the next poll for the whole timeout).
+enum ArtworkRef {
+    case data(Data)
+    case url(URL)
+}
+
 /// A controllable now-playing source.
 protocol PlayerSource {
     func poll() -> NowPlaying
+    /// The current track's cover, unresolved. Called once per track change, on
+    /// the same serial queue as `poll` — never per poll.
+    func artwork() -> ArtworkRef?
     func playPause()
     func nextTrack()
     func previousTrack()
@@ -216,13 +266,29 @@ final class AppleScriptPlayer: PlayerSource {
     private let durationScale: Double
     private let source: String
     private let queue: DispatchQueue
+    private let artworkSource: String
+    private let artworkReply: PlayerSourceKind.ArtworkReply
     // Created lazily on first poll; only ever touched on `queue`.
     private var script: NSAppleScript?
+    private var artworkScript: NSAppleScript?
 
     init(kind: PlayerSourceKind, bundleID: String, queue: DispatchQueue) {
         self.bundleID = bundleID
         self.durationScale = kind.durationScale
         self.queue = queue
+        self.artworkReply = kind.artworkReply
+        // Same shape as the poll script — the not-running guard sits outside
+        // the `tell` so a cover request can never launch a quit player.
+        self.artworkSource = """
+        if not (application id "\(bundleID)" is running) then return ""
+        tell application id "\(bundleID)"
+          try
+        \(kind.artworkScriptBody)
+          on error
+            return ""
+          end try
+        end tell
+        """
         self.source = """
         set d to (ASCII character 31)
         if not (application id "\(bundleID)" is running) then return "not-running"
@@ -277,6 +343,37 @@ final class AppleScriptPlayer: PlayerSource {
         np.isPlaying = parts[6] == "playing"
         np.trackId = parts[7].isEmpty ? "\(parts[2])::\(parts[1])" : parts[7]
         return np
+    }
+
+    /// The current track's cover. Runs on `queue` like everything else that
+    /// touches NSAppleScript. Every failure — no artwork, a permission refusal,
+    /// a player that quit between the poll and this call — returns nil, because
+    /// a missing cover is a cosmetic gap and the poll script is already the one
+    /// reporting real trouble to the user.
+    func artwork() -> ArtworkRef? {
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else {
+            return nil
+        }
+        if artworkScript == nil { artworkScript = NSAppleScript(source: artworkSource) }
+        guard let artworkScript else { return nil }
+        var err: NSDictionary?
+        let desc = artworkScript.executeAndReturnError(&err)
+        guard err == nil else { return nil }
+
+        switch artworkReply {
+        case .bytes:
+            // The descriptor is untyped as far as we're concerned: the "no
+            // cover" path returns text, the hit returns image bytes. Reading
+            // `.data` off the empty-string descriptor just yields nothing, and
+            // anything that isn't really an image dies at the decode.
+            let data = desc.data
+            return data.isEmpty ? nil : .data(data)
+        case .url:
+            guard let text = desc.stringValue, let url = URL(string: text),
+                  url.scheme == "https" || url.scheme == "http"
+            else { return nil }
+            return .url(url)
+        }
     }
 
     // MARK: - Playback commands (dispatched onto the script queue)

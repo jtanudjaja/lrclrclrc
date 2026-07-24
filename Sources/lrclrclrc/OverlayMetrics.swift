@@ -14,8 +14,11 @@ enum OverlayMetrics {
     static let lineUnit: CGFloat = 25.5      // nominal context-line slot (15pt font * 1.7)
     static let stackSpacing: CGFloat = 16    // summed inter-zone gaps
     static let hPadding: CGFloat = 48        // 24 leading + 24 trailing
-    // The one-row footer needs ~250pt; 320 − 48 padding = 272 available, so a
-    // too-narrow footer is impossible by construction (no squeezed variant).
+    // The one-row footer needs ~195pt — transport 86 (3 × 22pt hit targets +
+    // 2 × 10 gaps), timing 96 (2 × 22 + 2 × 6 + the 40pt readout floor), and
+    // the spacer's 12pt minimum between them. 320 − 48 padding = 272
+    // available, so a too-narrow footer is impossible by construction (no
+    // squeezed variant).
     static let minWidthBase: CGFloat = 320
 
     /// Blur radius for the hero line's bloom, sized against the side inset so
@@ -41,6 +44,82 @@ enum OverlayMetrics {
     static func lineFont(fs: CGFloat) -> NSFont { .systemFont(ofSize: 15 * fs) }
     static func headerFont(fs: CGFloat) -> NSFont { .systemFont(ofSize: 11 * fs, weight: .semibold) }
     static func headerArtistFont(fs: CGFloat) -> NSFont { .systemFont(ofSize: 10 * fs) }
+    static func sourceChipFont(fs: CGFloat) -> NSFont { .systemFont(ofSize: 8.5 * fs, weight: .semibold) }
+
+    // MARK: - Header furniture (art tile, source chip)
+
+    /// The art tile's side. Deliberately under `headerAllowance` — the tile
+    /// rides *inside* the two rows the floor already reserves for the title and
+    /// artist, so adding it can never grow the header or shrink the stage.
+    static let artTile: CGFloat = 26
+    static let artGap: CGFloat = 8
+
+    /// Content width the header actually gets, after the card's own padding.
+    static func headerWidth(cardWidth: CGFloat, fs: CGFloat) -> CGFloat {
+        max(0, cardWidth - hPadding * fs)
+    }
+
+    /// The title is the header's job; the tile and the chip are furniture
+    /// around it. When furniture and title compete for a narrow row the
+    /// furniture loses, so the title never truncates and never has to wrap into
+    /// a row it wouldn't otherwise need — a header that grows takes its extra
+    /// row from the stage, which is the one thing on the card that shouldn't
+    /// pay for decoration.
+    ///
+    /// The floor for a title too long to fit on one row at any of these widths:
+    /// it's wrapping regardless, so the choice is only how much of the row it
+    /// keeps, and half of it is enough to stay the header's subject.
+    private static let titleFloor: CGFloat = 0.5
+
+    /// Room the title column has left once the furniture has taken its width.
+    private static func titleColumn(cardWidth: CGFloat, fs: CGFloat,
+                                    art: Bool, chip: CGFloat) -> CGFloat {
+        headerWidth(cardWidth: cardWidth, fs: fs)
+            - (art ? (artTile + artGap) * fs : 0)
+            - (chip > 0 ? chip + artGap * fs : 0)
+    }
+
+    /// One unwrapped row of this title.
+    private static func titleRowWidth(_ title: String, fs: CGFloat) -> CGFloat {
+        textWidth(title, font: headerFont(fs: fs))
+    }
+
+    /// True when the art tile fits. The tile is cheap (34pt beside a title
+    /// column measured in hundreds) and it's the element that identifies the
+    /// track, so it yields only on a row too cramped to carry it at all —
+    /// unlike the chip, it may cost a wrapping title a row.
+    static func artFits(title: String, cardWidth: CGFloat, fs: CGFloat) -> Bool {
+        let content = headerWidth(cardWidth: cardWidth, fs: fs)
+        let column = titleColumn(cardWidth: cardWidth, fs: fs, art: true, chip: 0)
+        return column >= min(titleRowWidth(title, fs: fs), content * titleFloor)
+    }
+
+    /// Laid-out width of the source chip, tracking and padding included.
+    static func sourceChipWidth(_ name: String, fs: CGFloat) -> CGFloat {
+        let label = name.uppercased()
+        return textWidth(label, font: sourceChipFont(fs: fs))
+            + 0.6 * fs * CGFloat(label.count)  // tracking, which textWidth omits
+            + 14 * fs                          // horizontal padding
+            + 2                                // capsule border
+    }
+
+    /// True when the chip fits *after* the tile has taken its width, and the
+    /// title still lands on one row beside it.
+    ///
+    /// The chip is held to a stricter test than the tile because it's worth
+    /// less: it names a player the user already chose, and it's wide — most of
+    /// a hundred points for "APPLE MUSIC". So it is never allowed to be the
+    /// reason a title wraps. A long title simply doesn't get a chip until the
+    /// card is wide enough to carry both, which is the same answer at every
+    /// width rather than a threshold that pops it in and out mid-song.
+    static func sourceChipFits(_ name: String, title: String,
+                               cardWidth: CGFloat, fs: CGFloat) -> Bool {
+        guard !name.isEmpty else { return false }
+        let art = artFits(title: title, cardWidth: cardWidth, fs: fs)
+        let column = titleColumn(cardWidth: cardWidth, fs: fs, art: art,
+                                 chip: sourceChipWidth(name, fs: fs))
+        return column >= titleRowWidth(title, fs: fs)
+    }
 
     // MARK: - Measurement
 
@@ -62,12 +141,6 @@ enum OverlayMetrics {
 
     static func textWidth(_ text: String, font: NSFont) -> CGFloat {
         ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width)
-    }
-
-    /// True when "♪ title · artist" fits the card on a single header row.
-    static func headerFitsOneRow(title: String, artist: String, fs: CGFloat, cardWidth: CGFloat) -> Bool {
-        let one = "♪  \(title)   ·   \(artist)"
-        return textWidth(one, font: headerFont(fs: fs)) <= cardWidth - 48 * fs
     }
 
     /// The floor's header term: a fixed two-row reserve (title row + artist
