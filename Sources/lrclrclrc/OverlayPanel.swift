@@ -87,9 +87,12 @@ final class OverlayPanel: NSPanel {
         ignoresMouseEvents = passive
         isFloatingPanel = passive
         level = passive ? .screenSaver : .floating
+        // Panels are excluded from the ⌘` window cycle by default; an
+        // interactive card is a real window the user focuses, so it opts back
+        // in and ⌘` moves between it and Preferences like any other app.
         collectionBehavior = passive
             ? [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            : []
+            : [.participatesInCycle]
         if passive {
             styleMask.insert(.nonactivatingPanel)
         } else {
@@ -155,7 +158,10 @@ final class OverlayPanel: NSPanel {
     // native resize arrows). Passive mode takes no events at all, so it opts
     // back out and can never steal focus.
     override var canBecomeKey: Bool { !isPassive }
-    override var canBecomeMain: Bool { false }
+    // ⌘` cycles *main* windows, so staying non-main kept the card out of the
+    // rotation no matter what the collection behavior said. Passive mode still
+    // refuses both, since it takes no events at all.
+    override var canBecomeMain: Bool { !isPassive }
 
     /// Back to the default size and bottom-center position (Preferences reset).
     /// The floor still applies — refreshFloor grows it right after if needed.
