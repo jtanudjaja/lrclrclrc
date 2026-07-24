@@ -37,6 +37,11 @@ final class LyricsController: ObservableObject {
     @Published private(set) var offset: Double = 0
     @Published private(set) var isSynced = false
     @Published private(set) var allLines: [LrcLine] = []
+    /// The few longest lines in this track — the only candidates for "tallest
+    /// the active row can get". Picked once per track because the window's
+    /// live floor is recomputed on every step of a resize drag, and measuring
+    /// a whole song's wrapped heights per frame is real work.
+    @Published private(set) var heroCandidates: [String] = []
     @Published private(set) var currentLineIndex = -1
     @Published private(set) var stagePhase: StagePhase = .idle
     /// True after ~30s with nothing playing — the overlay fades to near-transparent.
@@ -467,9 +472,23 @@ final class LyricsController: ObservableObject {
 
     // MARK: - Rendering / sync
 
+    /// The longest lines by rendered width, which are the only ones that can
+    /// be the tallest once wrapped: at a fixed font and column, wrapped height
+    /// is monotonic in unwrapped width. Keeping several rather than one covers
+    /// the exception — a long unbreakable word forcing an early break.
+    private static func heroCandidates(_ lines: [LrcLine]) -> [String] {
+        let font = OverlayMetrics.heroFont(fs: 1)
+        return lines.map(\.text).filter { !$0.isEmpty }
+            .map { (text: $0, width: OverlayMetrics.textWidth($0, font: font)) }
+            .sorted { $0.width > $1.width }
+            .prefix(5)
+            .map(\.text)
+    }
+
     private func apply(_ res: LyricsResult) {
         lines = res.lines
         allLines = res.lines
+        heroCandidates = Self.heroCandidates(res.lines)
         synced = res.synced && lines.contains { $0.time != nil }
         isSynced = synced
         currentIndex = -1
@@ -595,6 +614,7 @@ final class LyricsController: ObservableObject {
         lyricsTask?.cancel() // an in-flight fetch for a torn-down track is moot
         lines = []
         allLines = []
+        heroCandidates = []
         synced = false
         isSynced = false
         currentIndex = -1

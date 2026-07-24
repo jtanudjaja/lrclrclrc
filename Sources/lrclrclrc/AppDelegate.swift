@@ -80,10 +80,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fontScaleCancellable = appearance.$fontScale
             .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
-        linesCancellable = controller.$allLines
+        // The floor's only lyric dependency is the track's tallest candidates,
+        // so watch those rather than the whole line array.
+        linesCancellable = controller.$heroCandidates
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshFloor(growNow: true) }
-        // Deferred floor settle at the end of a native live resize.
+        // The floor tracks the drag itself, not just its end. Narrowing the
+        // card wraps the active row taller, which raises the height floor —
+        // and `minSize` is what the window server clamps the drag against, so
+        // updating it live is what makes a cut row *unreachable* rather than
+        // undone a moment later. `growNow: false` is the important half: this
+        // sets the stop without also animating the window, so it never fights
+        // the hand that's dragging.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: panel, queue: .main
+        ) { [weak self] _ in self?.refreshFloor(growNow: false) }
+        // Deferred settle at the end: catches anything the live clamp couldn't,
+        // and is where growth is allowed to happen.
         NotificationCenter.default.addObserver(
             forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main
         ) { [weak self] _ in self?.refreshFloor(growNow: true) }
@@ -97,15 +110,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !Settings.hasOnboarded { showOnboarding() }
     }
 
-    /// Recompute the live minimum/maximum window size from the current text
-    /// size, width, lyrics, and click-through state (spec Part 3, rule 4).
+    /// Recompute the live minimum window size: padding around the active row
+    /// at this text size and this width, and nothing else. Chrome and context
+    /// lines are the tier ladder's business, not the floor's — the one thing
+    /// the window is never allowed to be too small for is the row that's
+    /// playing (spec Part 3, rule 4).
     private func refreshFloor(growNow: Bool) {
         guard let panel else { return }
         let minSize = OverlayMetrics.minContentSize(
             fontScale: appearance.fontScale,
             cardWidth: panel.frame.width,
-            lines: controller.allLines,
-            clickThrough: clickThrough,
+            heroCandidates: controller.heroCandidates,
             screenHeight: (panel.screen ?? NSScreen.main)?.visibleFrame.height
         )
         panel.updateFloor(minSize, growNow: growNow)

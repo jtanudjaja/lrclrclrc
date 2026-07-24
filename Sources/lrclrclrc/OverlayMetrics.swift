@@ -9,17 +9,21 @@ import AppKit
 /// size ("the floor") is an honest sum and the cramped case can't exist.
 enum OverlayMetrics {
     // Base metrics in points at fontScale = 1 (multiplied by fs at call sites).
-    static let vPadding: CGFloat = 28        // 14 top + 14 bottom
-    static let footerH: CGFloat = 32         // one row: transport centered, timing trailing
+    // Vertical padding and the inter-zone gaps now belong to the tier — see
+    // `Tier.vPad` and `tierHeight` — because both ease off as the card shrinks.
+    static let footerH: CGFloat = 32         // one row: transport leading, timing trailing
     static let lineUnit: CGFloat = 25.5      // nominal context-line slot (15pt font * 1.7)
-    static let stackSpacing: CGFloat = 16    // summed inter-zone gaps
     static let hPadding: CGFloat = 48        // 24 leading + 24 trailing
     // The one-row footer needs ~195pt — transport 86 (3 × 22pt hit targets +
     // 2 × 10 gaps), timing 96 (2 × 22 + 2 × 6 + the 40pt readout floor), and
-    // the spacer's 12pt minimum between them. 320 − 48 padding = 272
+    // the spacer's 12pt minimum between them. 250 − 48 padding = 202
     // available, so a too-narrow footer is impossible by construction (no
-    // squeezed variant).
-    static let minWidthBase: CGFloat = 320
+    // squeezed variant) in the tiers that have one.
+    //
+    // Below ~220 the active row starts wrapping an extra time for ordinary
+    // lyrics, and the height the floor then demands outruns the width saved —
+    // the card gets *larger* in area. 250 sits clear of both limits.
+    static let minWidthBase: CGFloat = 250
 
     /// Blur radius for the hero line's bloom, sized against the side inset so
     /// the pool stays inside the card's rounded clip at any window width. A
@@ -34,9 +38,6 @@ enum OverlayMetrics {
     /// so anything that clips the band has to be held off by this much to cut
     /// nothing — see the band's mask in `OverlayView`.
     static func heroGlowBleed(fs: CGFloat) -> CGFloat { heroGlowRadius(fs: fs) * 3 }
-
-    /// Floor guarantee: hero + this many context lines always fit.
-    static let minContextLines = 2
 
     // MARK: - Fonts (sizes must match what OverlayView renders)
 
@@ -94,13 +95,12 @@ enum OverlayMetrics {
         return column >= min(titleRowWidth(title, fs: fs), content * titleFloor)
     }
 
-    /// Laid-out width of the source chip, tracking and padding included.
+    /// Laid-out width of the source chip, tracking included. The chip is bare
+    /// text — no capsule, so no padding or border to account for.
     static func sourceChipWidth(_ name: String, fs: CGFloat) -> CGFloat {
         let label = name.uppercased()
         return textWidth(label, font: sourceChipFont(fs: fs))
             + 0.6 * fs * CGFloat(label.count)  // tracking, which textWidth omits
-            + 14 * fs                          // horizontal padding
-            + 2                                // capsule border
     }
 
     /// True when the chip fits *after* the tile has taken its width, and the
@@ -153,43 +153,141 @@ enum OverlayMetrics {
         return titleRow + artistRow + 8 * fs
     }
 
-    // MARK: - Sub-floor safety net
-    // The floor normally guarantees every zone fits. These thresholds only
-    // matter if the window is somehow forced below it (tiny display clamp).
+    // MARK: - The tier ladder
+    //
+    // The card sheds furniture as it shrinks, in order of how recoverable each
+    // piece is elsewhere. Nothing here is a safety net — every tier is a
+    // designed layout, and the renderer picks one by reading the geometry it
+    // was actually given.
+    //
+    // What is *not* negotiable is the active row. It is a floor term, never a
+    // budget item: every tier reserves its full wrapped height, and the fade's
+    // opaque band is clamped to contain it (`edgeFadeSpan`). Context lines,
+    // chrome and padding all yield first.
 
-    static func headerVisible(height: CGFloat, fs: CGFloat) -> Bool { height >= 92 * fs }
-    static func controlsFit(height: CGFloat, width: CGFloat, fs: CGFloat) -> Bool {
-        height >= 150 * fs && width >= 280 * fs
+    enum Tier: Int, Comparable {
+        case bare = 0    // the active row, alone
+        case minimal     // + context lines
+        case compact     // + header (one row)
+        case snug        // + footer
+        case full        // + artist row, two context lines
+
+        static func < (a: Tier, b: Tier) -> Bool { a.rawValue < b.rawValue }
+
+        /// Header rows: 2 carries the artist, 1 is title-only, 0 is gone.
+        var headerRows: Int {
+            switch self {
+            case .full: return 2
+            case .snug, .compact: return 1
+            case .minimal, .bare: return 0
+            }
+        }
+
+        var hasFooter: Bool { self >= .snug }
+
+        /// Context lines *guaranteed* — a taller card simply fits more, since
+        /// the teleprompter fills whatever budget it's handed.
+        var contextLines: Int {
+            switch self {
+            case .full: return 2
+            case .snug, .compact, .minimal: return 1
+            case .bare: return 0
+            }
+        }
+
+        /// Vertical padding eases off with the card: 14pt above and below is
+        /// most of a Bare card, and reads as a border rather than as breathing
+        /// room.
+        var vPad: CGFloat {
+            switch self {
+            case .full, .snug: return 14
+            case .compact: return 10
+            case .minimal, .bare: return 7
+            }
+        }
+    }
+
+    /// Height this tier needs, given the active row's measured height. The
+    /// hero term is passed in rather than measured here so the caller can
+    /// reuse one measurement across all five tiers.
+    static func tierHeight(_ tier: Tier, heroHeight: CGFloat, fs: CGFloat, clickThrough: Bool) -> CGFloat {
+        let header = tier.headerRows == 2 ? headerAllowance(fs: fs)
+                   : tier.headerRows == 1 ? headerTitleRow(fs: fs) : 0
+        let footer = (tier.hasFooter && !clickThrough) ? footerH * fs : 0
+        // One 5pt gap per zone that's actually present, matching the card's
+        // VStack spacing.
+        let gaps = ((tier.headerRows > 0 ? 1 : 0) + (footer > 0 ? 1 : 0)) * 5 * fs
+        return tier.vPad * 2 * fs
+            + header + footer + gaps
+            + heroHeight
+            + lineUnit * fs * CGFloat(tier.contextLines)
+    }
+
+    /// The richest tier this geometry can carry without cutting the active row.
+    static func tier(height: CGFloat, heroHeight: CGFloat, fs: CGFloat, clickThrough: Bool) -> Tier {
+        let ladder: [Tier] = [.full, .snug, .compact, .minimal]
+        for t in ladder where height >= tierHeight(t, heroHeight: heroHeight, fs: fs, clickThrough: clickThrough) {
+            return t
+        }
+        return .bare
+    }
+
+    /// One header row (title, no artist).
+    static func headerTitleRow(fs: CGFloat) -> CGFloat {
+        textHeight("Ag", font: headerFont(fs: fs), width: 10_000) + 3 * fs
+    }
+
+    // MARK: - The active row
+
+    /// Tallest the active row can get in this track at this width. Measured
+    /// over `candidates` — the handful of longest lines, picked once per track
+    /// by `LyricsController` — rather than the whole song, because this runs on
+    /// every step of a live resize and a full re-measure is O(lines) of text
+    /// layout per frame.
+    ///
+    /// Always measured at the *nominal* hero font. The floor's job is to
+    /// guarantee 22pt fits; the renderer's clamped-down size must never feed
+    /// back into it, or the two chase each other downward.
+    static func heroHeight(candidates: [String], cardWidth: CGFloat, fs: CGFloat) -> CGFloat {
+        let mWidth = measureWidth(cardWidth: max(cardWidth, minWidthBase * fs), fs: fs)
+        let font = heroFont(fs: fs)
+        var tallest: CGFloat = 30 * fs // single-row fallback: no lyrics yet
+        for text in candidates where !text.isEmpty {
+            tallest = max(tallest, textHeight(text, font: font, width: mWidth))
+        }
+        return tallest
+    }
+
+    /// Half-span of the stage's top/bottom dissolve, as a fraction of the
+    /// stage. Two existing terms — a cap, and a line-height-aware ramp — plus
+    /// the one that protects the active row: the opaque band must always
+    /// contain the hero slot. That third term only binds on a short stage (at
+    /// 300pt it evaluates to ~0.45 and loses to the ramp), so the full-size
+    /// card is unchanged.
+    static func edgeFadeSpan(stageHeight: CGFloat, heroHeight: CGFloat, fs: CGFloat) -> CGFloat {
+        let ramp = (lineUnit * 1.3 * fs) / max(1, stageHeight)
+        let clearOfHero = max(0, (stageHeight - heroHeight) / 2) / max(1, stageHeight)
+        return min(0.35, ramp, clearOfHero)
     }
 
     // MARK: - The live floor
 
-    /// Minimum content size = padding + header allowance (2 rows, reserved
-    /// ahead) + tallest line of *this song* wrapped at *this width* +
-    /// `minContextLines` context lines + footer. Clamped to the screen so a
-    /// pathological song can't outgrow the display.
+    /// The absolute minimum: Bare padding around the active row, nothing else.
+    ///
+    /// Deliberately a single value rather than one floor per tier. Tiers are a
+    /// *rendering* decision read from the geometry; if the floor also depended
+    /// on the tier, and the tier on the height, `minSize` would feed back into
+    /// the thing that chose it. This way `growToMinimum` keeps one meaning at
+    /// every size: grow until the active row fits.
     static func minContentSize(
         fontScale: Double,
         cardWidth: CGFloat,
-        lines: [LrcLine],
-        clickThrough: Bool,
+        heroCandidates: [String],
         screenHeight: CGFloat?
     ) -> CGSize {
         let fs = CGFloat(fontScale)
-        let mWidth = measureWidth(cardWidth: max(cardWidth, minWidthBase * fs), fs: fs)
-        let hero = heroFont(fs: fs)
-
-        var tallest: CGFloat = 30 * fs // single-row hero fallback (no lyrics yet)
-        for line in lines where !line.text.isEmpty {
-            tallest = max(tallest, textHeight(line.text, font: hero, width: mWidth))
-        }
-
-        var height = vPadding * fs
-            + headerAllowance(fs: fs)
-            + tallest
-            + lineUnit * fs * CGFloat(minContextLines)
-            + (clickThrough ? 0 : footerH * fs)
-            + stackSpacing * fs
+        let hero = heroHeight(candidates: heroCandidates, cardWidth: cardWidth, fs: fs)
+        var height = Tier.bare.vPad * 2 * fs + hero
         if let screenH = screenHeight {
             height = min(height, screenH - 60)
         }

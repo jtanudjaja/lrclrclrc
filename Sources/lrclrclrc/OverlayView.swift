@@ -69,8 +69,17 @@ struct OverlayView: View {
         let fs = CGFloat(appearance.fontScale)
         let clickThrough = appearance.clickThroughActive
         let radius = 18 + 6 * (fs - 1)
-        let showHeader = OverlayMetrics.headerVisible(height: size.height, fs: fs)
-        let footerOn = !clickThrough && OverlayMetrics.controlsFit(height: size.height, width: size.width, fs: fs)
+        // The tier is read from the geometry the card was actually handed. The
+        // hero term comes from the track's tallest line, not the line playing
+        // right now — otherwise a long lyric arriving mid-song would drop the
+        // header and shuffle the whole card underneath the user.
+        let heroH = OverlayMetrics.heroHeight(
+            candidates: controller.heroCandidates, cardWidth: size.width, fs: fs
+        )
+        let tier = OverlayMetrics.tier(height: size.height, heroHeight: heroH,
+                                       fs: fs, clickThrough: clickThrough)
+        let showHeader = tier.headerRows > 0
+        let footerOn = tier.hasFooter && !clickThrough
         // Idle is lyrics-only: header and controls fade in together on hover
         // (or stay on with Always Show Controls). Space stays reserved — the
         // switch is pure opacity, and the invisible header still drags.
@@ -79,11 +88,11 @@ struct OverlayView: View {
 
         return VStack(spacing: 5 * fs) {
             if showHeader {
-                headerView(fs: fs, cardWidth: size.width)
+                headerView(fs: fs, cardWidth: size.width, tier: tier)
                     .opacity(chromeVisible ? 1 : 0)
             }
 
-            stageArea(fs: fs)
+            stageArea(fs: fs, tier: tier)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if footerOn {
@@ -92,7 +101,7 @@ struct OverlayView: View {
             }
         }
         .padding(.horizontal, OverlayMetrics.hPadding / 2 * fs)
-        .padding(.vertical, OverlayMetrics.vPadding / 2 * fs)
+        .padding(.vertical, tier.vPad * fs)
         .frame(width: size.width, height: size.height)
         .background { backgroundLayer(radius: radius) }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -141,7 +150,7 @@ struct OverlayView: View {
     /// the two the floor already reserves, and the tile is shorter than they
     /// are, so none of this can grow the header at the stage's expense.
     @ViewBuilder
-    private func headerView(fs: CGFloat, cardWidth: CGFloat) -> some View {
+    private func headerView(fs: CGFloat, cardWidth: CGFloat, tier: OverlayMetrics.Tier) -> some View {
         // Empty states dim the header — the stage carries the message — and
         // drop the furniture with it: a tile and a player chip beside "Nothing
         // playing" would be captioning a track that isn't there.
@@ -159,7 +168,9 @@ struct OverlayView: View {
                     .font(.system(size: 11 * fs, weight: .semibold))
                     .foregroundColor(textColor.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true) // wrap, never truncate
-                if !controller.artist.isEmpty {
+                // The artist is the first thing the header gives up: the title
+                // still says which track this is.
+                if tier.headerRows == 2, !controller.artist.isEmpty {
                     Text(controller.artist)
                         .font(.system(size: 10 * fs))
                         .foregroundColor(textColor.opacity(0.55))
@@ -216,20 +227,14 @@ struct OverlayView: View {
             .foregroundStyle(textColor.opacity(0.6))
             .lineLimit(1)
             .fixedSize()
-            .padding(.horizontal, 7 * fs)
             .padding(.vertical, 2.5 * fs)
-            .background(
-                Capsule()
-                    .fill(haloColor.opacity(0.32))
-                    .overlay(Capsule().strokeBorder(textColor.opacity(0.2), lineWidth: 1))
-            )
     }
 
     // MARK: - Stage (one designed home per state)
 
-    private func stageArea(fs: CGFloat) -> some View {
+    private func stageArea(fs: CGFloat, tier: OverlayMetrics.Tier) -> some View {
         GeometryReader { g in
-            stageContent(fs: fs, stage: g.size)
+            stageContent(fs: fs, stage: g.size, tier: tier)
                 .frame(width: g.size.width, height: g.size.height)
         }
         // Vertically this is a real containment rule: the stage must not spill
@@ -245,7 +250,7 @@ struct OverlayView: View {
     }
 
     @ViewBuilder
-    private func stageContent(fs: CGFloat, stage: CGSize) -> some View {
+    private func stageContent(fs: CGFloat, stage: CGSize, tier: OverlayMetrics.Tier) -> some View {
         switch controller.stagePhase {
         case .permission:
             permissionStage(fs)
@@ -259,11 +264,11 @@ struct OverlayView: View {
             // Not a separate screen: the countdown lives in the hero slot of
             // the normal teleprompter, with the full lyric context below —
             // scrub or click a line to skip the instrumental.
-            teleprompter(fs: fs, stage: stage, softer: false, intro: (countdown, first))
+            teleprompter(fs: fs, stage: stage, tier: tier, softer: false, intro: (countdown, first))
         case .synced:
-            teleprompter(fs: fs, stage: stage, softer: false)
+            teleprompter(fs: fs, stage: stage, tier: tier, softer: false)
         case .unsynced:
-            teleprompter(fs: fs, stage: stage, softer: true)
+            teleprompter(fs: fs, stage: stage, tier: tier, softer: true)
         }
     }
 
@@ -368,10 +373,11 @@ struct OverlayView: View {
         let isCredit: Bool
     }
 
-    private func teleprompter(fs: CGFloat, stage: CGSize, softer: Bool,
+    private func teleprompter(fs: CGFloat, stage: CGSize, tier: OverlayMetrics.Tier, softer: Bool,
                               intro: (countdown: Int, first: Bool)? = nil) -> some View {
         let lines = controller.allLines
         let measureW = min(stage.width, 450 * fs)
+        let heroSize = effectiveHeroSize(measureW: measureW, stageH: stage.height, fs: fs)
         let step = OverlayMetrics.lineUnit * fs * 1.15
         let playingRaw = controller.currentLineIndex
         let playing = max(0, playingRaw)
@@ -390,12 +396,15 @@ struct OverlayView: View {
             if unclamped != focus { residual *= 0.3 } // rubber-band
         }
 
-        let slots = computeSlots(lines: lines, focus: focus, stage: stage, measureW: measureW, fs: fs)
+        let slots = computeSlots(lines: lines, focus: focus, stage: stage, measureW: measureW,
+                                 fs: fs, heroSize: heroSize, tier: tier)
+        let heroH = heroSlotHeight(lines: lines, focus: focus, measureW: measureW,
+                                   fs: fs, heroSize: heroSize)
 
         return ZStack {
             ForEach(slots) { slot in
                 slotView(slot, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs,
-                         intro: scrubbing ? nil : intro)
+                         heroSize: heroSize, intro: scrubbing ? nil : intro)
                     .frame(width: measureW)
                     .offset(y: slot.y + residual)
             }
@@ -410,7 +419,7 @@ struct OverlayView: View {
         // the card's rounded clip, which is a real edge, instead of to this
         // invisible rectangle.
         .mask(
-            edgeFade(stageHeight: stage.height, fs: fs)
+            edgeFade(stageHeight: stage.height, heroHeight: heroH, fs: fs)
                 .padding(.horizontal, -OverlayMetrics.heroGlowBleed(fs: fs))
         )
         .contentShape(Rectangle())
@@ -418,25 +427,75 @@ struct OverlayView: View {
         .animation(scrubbing ? nil : motion, value: controller.currentLineIndex)
     }
 
+    /// The hero's *rendered* size: nominal, stepped down only when the stage
+    /// can't hold the row whole.
+    ///
+    /// This is the last line of defence for the active-row invariant, and it
+    /// exists for the paths `minSize` can't reach — a frame restored from a
+    /// larger display, the floor's own `screenHeight` clamp, a text-size bump
+    /// on a small screen. Trading type size for wholeness is the lesser evil;
+    /// cutting the row is the thing that must never happen.
+    ///
+    /// Measured against the track's tallest candidates rather than the line
+    /// playing right now, so the size is settled once per geometry instead of
+    /// flickering line to line. It never feeds `minContentSize` — the floor is
+    /// always computed at nominal, or the two would chase each other down.
+    private func effectiveHeroSize(measureW: CGFloat, stageH: CGFloat, fs: CGFloat) -> CGFloat {
+        let nominal = 22 * fs
+        let smallest = 15 * fs // a context line: below this it isn't a hero
+        var size = nominal
+        while size > smallest {
+            if tallestHero(at: size, measureW: measureW, fs: fs) <= stageH { break }
+            size -= 0.5 * fs
+        }
+        return size
+    }
+
+    private func tallestHero(at size: CGFloat, measureW: CGFloat, fs: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size, weight: .bold)
+        var tallest: CGFloat = 0
+        for text in controller.heroCandidates where !text.isEmpty {
+            tallest = max(tallest, heights.height(text, fontSize: size, width: measureW) {
+                OverlayMetrics.textHeight(text, font: font, width: measureW)
+            })
+        }
+        return tallest == 0 ? 30 * fs : tallest
+    }
+
+    /// Height of the hero slot as it will actually render: the current line at
+    /// the effective size. Distinct from `OverlayMetrics.heroHeight`, which is
+    /// the track's worst case at nominal size and belongs to the floor.
+    private func heroSlotHeight(lines: [LrcLine], focus: Int, measureW: CGFloat,
+                                fs: CGFloat, heroSize: CGFloat) -> CGFloat {
+        let f = focus < 0 ? -1 : min(focus, lines.count - 1)
+        let text = (f >= 0 && f < lines.count) ? lines[f].text : "♪"
+        let font = NSFont.systemFont(ofSize: heroSize, weight: .bold)
+        return heights.height(text, fontSize: heroSize, width: measureW) {
+            OverlayMetrics.textHeight(text, font: font, width: measureW)
+        }
+    }
+
     /// Greedy pixel-budget fill around the pinned hero (spec Part 3, rules 1–2),
     /// rendering one overflow line past each budget for the clipped depth cue
     /// (rule 5), plus the credit slot after the final line.
-    private func computeSlots(lines: [LrcLine], focus: Int, stage: CGSize, measureW: CGFloat, fs: CGFloat) -> [Slot] {
+    private func computeSlots(lines: [LrcLine], focus: Int, stage: CGSize, measureW: CGFloat,
+                              fs: CGFloat, heroSize: CGFloat, tier: OverlayMetrics.Tier) -> [Slot] {
         guard !lines.isEmpty else { return [] }
         // focus == -1 is the virtual intro slot: nothing above it (the upward
         // walk starts at -2 and skips), the whole song below it.
         let f = focus < 0 ? -1 : min(focus, lines.count - 1)
         // Spacing loosens slightly as the stage grows (theater feel).
         let gap = (6 + min(2.5, max(0, stage.height / fs - 260) * 0.02)) * fs
-        let heroFont = OverlayMetrics.heroFont(fs: fs)
         let lineFont = OverlayMetrics.lineFont(fs: fs)
-        let heroSize = 22 * fs
         let lineSize = 15 * fs
-        let heroText = f >= 0 ? lines[f].text : "♪"
-        let heroH = heights.height(heroText, fontSize: heroSize, width: measureW) {
-            OverlayMetrics.textHeight(heroText, font: heroFont, width: measureW)
-        }
+        let heroH = heroSlotHeight(lines: lines, focus: focus, measureW: measureW,
+                                   fs: fs, heroSize: heroSize)
         let budget = max(0, (stage.height - heroH) / 2)
+        // Bare is the active row alone. The budget arithmetic would usually
+        // reach the same answer, but "usually" isn't the guarantee here — an
+        // exact zero keeps a neighbour from being laid into the fade's own band
+        // on a stage sized to hold nothing but the hero.
+        guard tier > .bare else { return [Slot(id: f, y: 0, isCredit: false)] }
 
         var slots = [Slot(id: f, y: 0, isCredit: false)]
 
@@ -483,7 +542,7 @@ struct OverlayView: View {
 
     @ViewBuilder
     private func slotView(_ slot: Slot, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat,
-                          intro: (countdown: Int, first: Bool)?) -> some View {
+                          heroSize: CGFloat, intro: (countdown: Int, first: Bool)?) -> some View {
         if slot.isCredit {
             Text(controller.status)
                 .font(.system(size: 9.5 * fs, weight: .medium))
@@ -494,18 +553,20 @@ struct OverlayView: View {
             // slot; the surrounding lines stay visible and seekable.
             introSlot(countdown: intro.countdown, first: intro.first, fs: fs)
         } else {
-            lyricLine(slot.id, lines: lines, focus: focus, playing: playing, softer: softer, fs: fs)
+            lyricLine(slot.id, lines: lines, focus: focus, playing: playing, softer: softer,
+                      fs: fs, heroSize: heroSize)
         }
     }
 
-    private func lyricLine(_ index: Int, lines: [LrcLine], focus: Int, playing: Int, softer: Bool, fs: CGFloat) -> some View {
+    private func lyricLine(_ index: Int, lines: [LrcLine], focus: Int, playing: Int, softer: Bool,
+                           fs: CGFloat, heroSize: CGFloat) -> some View {
         let isFocus = index == focus
         let distance = Double(abs(index - focus))
         // Unsynced ("softer"): the estimated line keeps the same size as its
         // neighbours — just brighter and semibold, no glow — honest about the
         // position being approximate.
         let opacity = isFocus ? (softer ? 0.95 : 1.0) : max(0.16, 0.62 - distance * 0.15)
-        let size: CGFloat = (isFocus && !softer) ? 22 * fs : 15 * fs
+        let size: CGFloat = (isFocus && !softer) ? heroSize : 15 * fs
         let weight: Font.Weight = isFocus ? (softer ? .semibold : .bold) : .regular
         let raw = lines[index].text
         let showMarker = scrubbing && index == playing && !isFocus
@@ -567,8 +628,15 @@ struct OverlayView: View {
     /// aware — always ≥ ~1.3 lyric lines — so an overflowing line melts away
     /// gradually instead of ramping out inside a few points and reading as a
     /// hard cutout. The mid-stop eases the ramp (no perceptible edge).
-    private func edgeFade(stageHeight: CGFloat, fs: CGFloat) -> LinearGradient {
-        let span = min(0.35, (OverlayMetrics.lineUnit * 1.3 * fs) / max(1, stageHeight))
+    ///
+    /// The span is also clamped to stay clear of the hero slot. Without that,
+    /// a short stage pins the span at its 0.35 cap, the two ramps cover 70% of
+    /// the stage, and the centred active row sits *inside* them — dimmed at
+    /// top and bottom, which reads exactly like the truncation the whole floor
+    /// exists to prevent. Context lines keep dissolving at every size; only the
+    /// active row is held out of the ramp.
+    private func edgeFade(stageHeight: CGFloat, heroHeight: CGFloat, fs: CGFloat) -> LinearGradient {
+        let span = OverlayMetrics.edgeFadeSpan(stageHeight: stageHeight, heroHeight: heroHeight, fs: fs)
         return LinearGradient(stops: [
             .init(color: .clear, location: 0.0),
             .init(color: .black.opacity(0.4), location: span * 0.55),
