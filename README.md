@@ -230,9 +230,10 @@ site/                     the project page (static; see site/README.md)
 
 ### Continuous integration
 
-- `.github/workflows/ci.yml` runs on every push/PR to `main`: builds the package
-  on macOS, assembles the `.app`, verifies the code signature, and uploads a
-  `.dmg` as a build artifact (downloadable from the Actions run).
+- `.github/workflows/ci.yml` runs on pushes/PRs to `main` that touch the Swift
+  build: compiles the package on macOS, assembles the `.app`, and verifies the
+  code signature. It produces no download — for a build you can install, cut a
+  release (below) or build locally.
 - `.github/workflows/pages.yml` deploys `site/` to GitHub Pages when the site
   changes. It needs the repo's Pages source set to **GitHub Actions**.
 
