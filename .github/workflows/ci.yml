@@ -1,10 +1,35 @@
 name: CI
 
+# Proves the app still compiles, assembles and signs. Deliberately produces no
+# downloadable artifact: a CI-built .dmg is ad-hoc signed and unnotarized, so
+# it's Gatekeeper-blocked on download with no install instructions attached to
+# it, and Actions re-zips artifacts and expires them after 90 days. Shipping a
+# build is release.yml's job — that one carries the xattr instructions.
+
 on:
   push:
     branches: [main]
+    # Prose and the static site can't break a Swift build, and both already
+    # have their own workflows. Without this, every README tweak spun up a
+    # macOS runner for a full release compile.
+    #
+    # Repeated verbatim under pull_request below — Actions' workflow parser
+    # doesn't support YAML anchors, so the two lists have to be kept in sync
+    # by hand.
+    paths-ignore:
+      - 'site/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/og-image.yml'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'site/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/og-image.yml'
   workflow_dispatch:
 
 concurrency:
@@ -17,8 +42,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # Recorded so a green-to-red flip after a runner image bump is
+      # attributable to the toolchain rather than to the commit.
       - name: Swift version
         run: swift --version
+      # build-app.sh runs `swift build` itself; this step exists so a compile
+      # failure lands here rather than inside the assemble step.
       - name: Build
         run: swift build -c release
       - name: Assemble & sign app bundle
@@ -29,11 +58,3 @@ jobs:
           test -f lrclrclrc.app/Contents/Info.plist
           codesign --verify --verbose lrclrclrc.app
           echo "app bundle OK"
-      - name: Package DMG
-        run: bash scripts/make-dmg.sh
-      - name: Upload DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: lrclrclrc-dmg
-          path: lrclrclrc.dmg
-          if-no-files-found: error

@@ -46,7 +46,7 @@ struct OverlayView: View {
 
     /// The entire palette: the user's colour, and the pole opposite it. Text
     /// and marks take the first, everything they are read *against* — halo
-    /// rim, hero bloom, chip backing — takes the second. Nothing on the card
+    /// rim, hero bloom, the art tile's ground — takes the second. Nothing on the card
     /// is a third colour, so there is no element that can be legible on one
     /// wallpaper and lost on the next.
     private var textColor: Color { appearance.textColor }
@@ -612,18 +612,14 @@ struct OverlayView: View {
             .background(chipBacking)
     }
 
-    /// Backing for the two small filled chips (Find-lyrics, the scrub time).
-    /// Both carry a label at 9–10.5pt, which is below the large-text bar, so
-    /// the fill has to be a real surface rather than a tint: the halo's pole
-    /// at 0.6 puts the label at ~5.7:1 even when the wallpaper behind it is
-    /// the label's own colour. The rim is what the fill cannot do — on the
-    /// pole where the fill matches the desktop (a dark chip on a dark
-    /// wallpaper) it is the only thing left holding the chip's shape, which
-    /// a button needs in order to look like one.
+    /// Outline for the two small chips (Find-lyrics, the scrub time). They are
+    /// unfilled, like the source chip: the card's own scrim is the surface, and
+    /// a second one stacked on top read as a patch on the glass. The rim is
+    /// what carries the shape — a button has to look like one — and the labels
+    /// keep the halo shadow their containers apply, which is what holds them
+    /// legible against a wallpaper in their own colour now that no fill does.
     private var chipBacking: some View {
-        Capsule()
-            .fill(haloColor.opacity(0.6))
-            .overlay(Capsule().strokeBorder(textColor.opacity(0.3), lineWidth: 1))
+        Capsule().strokeBorder(textColor.opacity(0.3), lineWidth: 1)
     }
 
     /// Top/bottom dissolve for the lyric band. The fade span is line-height-
