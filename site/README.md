@@ -8,6 +8,7 @@ are extracted from `bundling/icon.icns`).
 index.html    the page
 styles.css    all styling
 demo.js       the hero's teleprompter animation
+motion.js     scroll reveals, the nav scrubber, and the page's other motion
 robots.txt    crawl policy (open) + sitemap pointer
 sitemap.xml   one URL, because there's one page
 assets/       app icon at 180 / 512 / 1024px, plus og.png (the share card)
@@ -17,6 +18,13 @@ Three alternate design directions were tried and dropped — an `.lrc`-file
 layout, album liner notes, and a poster-scale karaoke treatment. This one won
 for saying plainly what the app does before it tries to be interesting. Worth
 remembering if a redesign ever comes up: that's the bar.
+
+**The words are not this file's call.** The tagline, the descriptor, the trio
+above the headline and the sign-off are fixed in [`BRAND.md`](../BRAND.md),
+along with the vocabulary and the list of every surface each one appears on.
+Change wording there first, then walk its surface map — the share card and the
+first-run wizard both carry copy that nothing on this page will contradict
+visibly when it drifts.
 
 ## The share card
 
@@ -81,7 +89,7 @@ lengths where search results stop truncating:
 
 | | budget | now |
 |---|---|---|
-| `<title>` | ~65 characters | 65 |
+| `<title>` | ~65 characters | 66 |
 | `<meta name="description">` | ~160 characters | 157 |
 
 Those budgets are really pixel widths, so they're approximate — but a title that
@@ -165,9 +173,20 @@ Every capability claimed on the page is checked against the source, not against
 this repo's README. If you change the menu (`AppDelegate.setupStatusItem`), the
 Preferences layout, or the timing offset steps, update the matching copy:
 
-- the menu mock in the **One menu** section
+- the menu mock in the **Everything is behind one ♫** section
 - the feature grid
 - the FAQ
+
+The numbers are part of that. The page quotes the Swift line count, the 1 Hz
+poll, the ~10 fps extrapolation and both timing steps (±0.1s in the card footer,
+±0.25s in the menu) — all of them readable from the source in under a minute,
+and all of them the kind of detail that goes quietly wrong. The line count in
+the **Three jobs** lede is the one guaranteed to drift; round it, and re-check
+it whenever that section is touched:
+
+```bash
+cat Sources/lrclrclrc/*.swift | wc -l
+```
 
 ## The demo lyrics
 

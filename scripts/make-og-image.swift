@@ -2,6 +2,11 @@
 // Same material as the site: the page background, the icon's gradient wash, and
 // a mock of the overlay card with the current line lit.
 // Usage: swift scripts/make-og-image.swift [out.png]   (macOS only)
+//
+// The wording below is the tagline, the standard descriptor and the trio, all
+// three copied from BRAND.md. This file is the surface that goes stale in
+// silence — nothing renders it next to the page, so a headline changed in
+// index.html and not here ships a link preview quoting last month's pitch.
 
 import AppKit
 
@@ -208,17 +213,17 @@ func drawCard() {
          at: NSPoint(x: margin + tile + 24, y: fromTop(tileTop + tile - 16)),
          size: 38, weight: .semibold, color: ink, kern: -0.6)
 
-    draw("Lyrics that float",
+    draw("Never miss",
          at: NSPoint(x: margin, y: fromTop(292)), size: 70, weight: .bold,
          color: ink, kern: -1.6)
-    draw("over everything.",
+    draw("the lyrics.",
          at: NSPoint(x: margin, y: fromTop(378)), size: 70, weight: .bold,
          color: brandLit, kern: -1.6)
 
     let sub = NSMutableParagraphStyle()
     sub.lineSpacing = 6
     NSAttributedString(
-        string: "Time-synced lyrics for Apple Music and Spotify, in a\ntranslucent card that stays above every app and Space.",
+        string: "Time-synced lyrics for Apple Music and Spotify, in a\ntranslucent card that floats above your other windows.",
         attributes: [
             .font: NSFont.systemFont(ofSize: 25, weight: .regular),
             .foregroundColor: inkDim,
@@ -226,7 +231,7 @@ func drawCard() {
         ]
     ).draw(at: NSPoint(x: margin, y: fromTop(500)))
 
-    draw("macOS  ·  menu bar app  ·  free and open source",
+    draw("macOS  ·  menu bar  ·  free and open source",
          at: NSPoint(x: margin, y: fromTop(566)),
          size: 19, weight: .medium, color: inkFaint, kern: 0.4)
 

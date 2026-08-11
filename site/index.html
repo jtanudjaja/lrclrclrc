@@ -6,7 +6,7 @@
 <!-- Title under ~65 characters, description under ~160, or search results
      truncate them mid-word. Both name the players on purpose: nobody searches
      for "lrclrclrc", they search for lyrics on a Mac. -->
-<title>lrclrclrc — macOS synced lyrics overlay for Apple Music &amp; Spotify</title>
+<title>lrclrclrc — macOS time-synced lyrics app for Apple Music &amp; Spotify</title>
 <meta name="description" content="Free macOS menu-bar app: follows Apple Music and Spotify, pulls time-synced lyrics from LRCLIB, and floats them over every app, Space and full-screen window.">
 <meta name="theme-color" content="#08090c">
 <meta name="color-scheme" content="dark">
@@ -21,23 +21,43 @@
 <meta property="og:site_name" content="lrclrclrc">
 <meta property="og:locale" content="en_US">
 <meta property="og:url" content="https://jtanudjaja.github.io/lrclrclrc/">
-<meta property="og:title" content="lrclrclrc — a time-synced lyrics overlay for macOS">
-<meta property="og:description" content="A native macOS menu-bar lyrics overlay for Apple Music and Spotify. Free, open source, no API key.">
+<meta property="og:title" content="lrclrclrc — a time-synced lyrics app for macOS">
+<meta property="og:description" content="A native macOS menu-bar lyrics app for Apple Music and Spotify. Free, open source, no API key.">
 <meta property="og:image" content="https://jtanudjaja.github.io/lrclrclrc/assets/og.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="The lrclrclrc app icon beside the words “Lyrics that float over everything”, next to a translucent card with one line lit up.">
+<meta property="og:image:alt" content="The lrclrclrc app icon beside the words “Never miss the lyrics”, next to a translucent card with one line lit up.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="lrclrclrc — a time-synced lyrics overlay for macOS">
-<meta name="twitter:description" content="A native macOS menu-bar lyrics overlay for Apple Music and Spotify. Free, open source, no API key.">
+<meta name="twitter:title" content="lrclrclrc — a time-synced lyrics app for macOS">
+<meta name="twitter:description" content="A native macOS menu-bar lyrics app for Apple Music and Spotify. Free, open source, no API key.">
 <meta name="twitter:image" content="https://jtanudjaja.github.io/lrclrclrc/assets/og.png">
-<meta name="twitter:image:alt" content="The lrclrclrc app icon beside the words “Lyrics that float over everything”, next to a translucent card with one line lit up.">
+<meta name="twitter:image:alt" content="The lrclrclrc app icon beside the words “Never miss the lyrics”, next to a translucent card with one line lit up.">
 
 <link rel="icon" href="assets/icon-180.png" sizes="180x180" type="image/png">
 <link rel="icon" href="assets/icon-512.png" sizes="512x512" type="image/png">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="stylesheet" href="styles.css">
+
+<!-- Motion bootstrap. Everything the page animates in on scroll starts from
+     opacity:0, which is only safe if something is guaranteed to turn it back
+     on — so the hidden state is gated behind this class, and the class is only
+     set when the browser has JS *and* the reader hasn't asked for less motion.
+     No JS, or reduce-motion, and the page renders fully visible and static.
+     The load-time check is the third belt: if motion.js never runs (blocked,
+     404, throw), the class comes back off rather than leaving a blank page. -->
+<script>
+  (function () {
+    var r = document.documentElement;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    r.classList.add('motion');
+    addEventListener('load', function () {
+      setTimeout(function () {
+        if (r.dataset.motion !== 'on') r.classList.remove('motion');
+      }, 400);
+    });
+  })();
+</script>
 
 <!-- Structured data. Everything below restates something already visible on the
      page — that's the rule, and it's also what keeps it from being spam. No
@@ -105,7 +125,7 @@
           "name": "Why isn't there a .dmg to download?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "A download that opens cleanly has to be signed and notarized, which needs an Apple Developer account at $99/yr. Without one, macOS quarantines the download and won't open it until the flag is cleared with a Terminal command. An app compiled on your own Mac is never quarantined. A signed release will go on GitHub if that ever changes."
+            "text": "A download that opens cleanly has to be signed and notarized, which needs an Apple Developer account at $99/yr. Without one, macOS quarantines the download and won't open it until the flag is cleared with a Terminal command — so a .dmg would mean Terminal plus a Gatekeeper warning. An app compiled on your own Mac is never quarantined. A signed release will go on GitHub if that ever changes."
           }
         },
         {
@@ -139,6 +159,14 @@
             "@type": "Answer",
             "text": "Either — you don't have to pick. make install compiles natively for whichever Mac you run it on. macOS 13 Ventura or later."
           }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you say the name?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You don't — it's a thing you type, not a thing you say. .lrc is the file format that pairs a lyric line with the moment it's sung, and the name is that extension three times, once for each job: know what's playing, find the words, put them on screen. Read aloud, it's “L-R-C, three times.”"
+          }
         }
       ]
     }
@@ -149,6 +177,14 @@
 <body>
 
 <a class="skip" href="#main">Skip to content</a>
+
+<!-- Slow-drifting colour behind the top of the page — the same bloom album art
+     throws onto a desktop. Paused the moment it scrolls out of view. -->
+<div class="aurora" aria-hidden="true">
+  <span class="blob b1"></span>
+  <span class="blob b2"></span>
+  <span class="blob b3"></span>
+</div>
 
 <header class="nav">
   <a class="brand" href="#top">
@@ -161,15 +197,17 @@
     <a href="#faq">FAQ</a>
     <a class="nav-cta" href="https://github.com/jtanudjaja/lrclrclrc">GitHub</a>
   </nav>
+  <!-- Read position as a playback scrubber: the page is the track. -->
+  <span class="scrub" aria-hidden="true"></span>
 </header>
 
 <main id="main">
 
 <!-- ─────────────────────────────  HERO  ───────────────────────────── -->
 <section class="hero" id="top">
-  <div class="hero-copy">
-    <p class="eyebrow">macOS · menu bar app · MIT</p>
-    <h1>Lyrics that float<br><span class="grad">over everything.</span></h1>
+  <div class="hero-copy" data-stagger>
+    <p class="eyebrow">macOS · menu bar · free and open source</p>
+    <h1>Never miss<br><span class="grad">the lyrics.</span></h1>
     <p class="lede">
       <strong>lrclrclrc</strong> watches whatever Apple&nbsp;Music or Spotify is
       playing, pulls time-synced lyrics, and highlights each line in a
@@ -185,13 +223,13 @@
       </a>
     </div>
     <p class="fine">
-      Free and open source. No account, no API key, no telemetry.
-      Installs from the Terminal in about a minute.
+      No account, no API key, no telemetry. Installs from the Terminal
+      in about a minute.
     </p>
   </div>
 
   <!-- Live mock of the overlay card, sitting on a fake desktop -->
-  <div class="hero-demo" aria-hidden="true">
+  <div class="hero-demo" aria-hidden="true" data-reveal>
     <div class="desktop">
       <div class="desktop-glow g1"></div>
       <div class="desktop-glow g2"></div>
@@ -200,6 +238,7 @@
         <span class="mb-apple"></span>
         <span class="mb-app">Music</span>
         <span class="mb-spacer"></span>
+        <span class="eq" id="eq"><i></i><i></i><i></i><i></i></span>
         <span class="mb-item mb-live" id="mbLine">♫ &nbsp;the quiet part out loud</span>
         <span class="mb-item">100%</span>
         <span class="mb-item">Fri 9:41</span>
@@ -232,12 +271,14 @@
 
 <!-- ─────────────────────────────  HOW  ───────────────────────────── -->
 <section class="band" id="how">
-  <h2>Three jobs, three small parts</h2>
-  <p class="section-lede">
-    A lyrics overlay is really three separate jobs, and the app splits along
-    those seams — about 3,600 lines of Swift in total.
+  <h2 data-reveal>Three jobs, three small parts</h2>
+  <p class="section-lede" data-reveal>
+    <code>.lrc</code> is the file format that pairs a lyric line with the moment
+    it's sung. The name is that extension three times — because a lyrics overlay
+    is really three separate jobs, and the app splits along those seams. About
+    4,200 lines of Swift, no dependencies.
   </p>
-  <ol class="steps">
+  <ol class="steps" data-stagger>
     <li>
       <span class="step-n">01</span>
       <h3>Know what's playing</h3>
@@ -270,15 +311,15 @@
 
 <!-- ─────────────────────────────  FEATURES  ───────────────────────────── -->
 <section class="band alt" id="features">
-  <h2>Everything it does</h2>
-  <p class="section-lede">
+  <h2 data-reveal>Everything it does</h2>
+  <p class="section-lede" data-reveal>
     Built to sit on screen for hours, so the resting state is nearly invisible
     and the controls only show up when you reach for them.
   </p>
 
-  <div class="grid">
+  <div class="grid" data-stagger>
     <article class="feat">
-      <h3>Always on top, everywhere</h3>
+      <h3>Switch apps, keep the words</h3>
       <p>The card floats above other apps and follows you across Spaces and into full-screen apps — it doesn't get left behind on desktop&nbsp;1.</p>
     </article>
     <article class="feat">
@@ -290,12 +331,12 @@
       <p>Click any lyric line to jump playback there, or drag vertically through the lyrics to scrub. The full-lyrics window (⌘F) auto-scrolls and its timed lines are clickable too.</p>
     </article>
     <article class="feat">
-      <h3>Per-song timing offset</h3>
-      <p>Lyrics drifting? Nudge them earlier or later. The correction is remembered <em>per song</em>, so fixing one never breaks the next.</p>
+      <h3>Lyrics running early or late</h3>
+      <p>Nudge them back into place. The correction is remembered <em>per song</em>, so fixing one never breaks the next.</p>
     </article>
     <article class="feat">
-      <h3>Click-through mode</h3>
-      <p>Make the overlay ignore the mouse entirely, so clicks land on whatever's behind it. For when you need the window underneath more than the words.</p>
+      <h3>When you need the window underneath</h3>
+      <p>Turn on <strong>Click-Through</strong> and the overlay ignores the mouse entirely, so clicks land on whatever's behind it.</p>
     </article>
     <article class="feat">
       <h3>Apple Music <em>and</em> Spotify</h3>
@@ -331,13 +372,13 @@
 <!-- ─────────────────────────────  MENU  ───────────────────────────── -->
 <section class="band" id="controls">
   <div class="split">
-    <div class="split-copy">
-      <h2>One menu, no preferences maze</h2>
+    <div class="split-copy" data-reveal>
+      <h2>Everything is behind one ♫</h2>
       <p class="section-lede">
         Everything lives behind the ♫ in the menu bar. The things you change
         often are one click away; the things you set once are in Preferences.
       </p>
-      <ul class="ticks">
+      <ul class="ticks" data-stagger>
         <li><strong>Show Lyrics In</strong> — Overlay, Menu Bar, or Hidden</li>
         <li><strong>Follow</strong> — Automatic, or a specific player</li>
         <li><strong>Full Lyrics…</strong> (⌘F) — the whole song, clickable</li>
@@ -346,8 +387,8 @@
         <li><strong>Click-Through</strong> (⌘T) — let clicks pass through</li>
       </ul>
     </div>
-    <div class="split-visual" aria-hidden="true">
-      <div class="menu-mock">
+    <div class="split-visual" aria-hidden="true" data-reveal>
+      <div class="menu-mock" id="menuMock">
         <div class="mm-row">Show Lyrics In <span class="mm-key">›</span></div>
         <div class="mm-row">Follow <span class="mm-key">›</span></div>
         <div class="mm-row">Full Lyrics… <span class="mm-key">⌘F</span></div>
@@ -355,7 +396,7 @@
         <div class="mm-row">Preferences…</div>
         <div class="mm-sep"></div>
         <div class="mm-row">Timing <span class="mm-key">›</span></div>
-        <div class="mm-row"><span class="mm-check"></span>Click-Through (ignore mouse) <span class="mm-key">⌘T</span></div>
+        <div class="mm-row"><span class="mm-check" id="mmClickThrough"></span>Click-Through (ignore mouse) <span class="mm-key">⌘T</span></div>
         <div class="mm-row"><span class="mm-check">✓</span>Launch at Login</div>
         <div class="mm-sep"></div>
         <div class="mm-row">Quit lrclrclrc <span class="mm-key">⌘Q</span></div>
@@ -366,21 +407,21 @@
 
 <!-- ─────────────────────────────  INSTALL  ───────────────────────────── -->
 <section class="band alt" id="install">
-  <h2>Install</h2>
-  <p class="section-lede">
+  <h2 data-reveal>Install</h2>
+  <p class="section-lede" data-reveal>
     Three lines in Terminal. <code>make install</code> handles the rest and ends
     with the app in <code>/Applications</code> and the ♫ in your menu bar.
     Needs macOS&nbsp;13 Ventura or later.
   </p>
 
-  <div class="install-grid">
+  <div class="install-grid" data-stagger>
     <article class="install-card recommended">
       <span class="tag">About a minute</span>
-      <h3>From source</h3>
+      <h3>The three lines</h3>
       <p>
         Open Terminal (⌘Space, type “Terminal”) and paste this in:
       </p>
-      <pre><code>git clone https://github.com/jtanudjaja/lrclrclrc.git
+      <pre data-type><code>git clone https://github.com/jtanudjaja/lrclrclrc.git
 cd lrclrclrc
 make install</code></pre>
       <p class="fine">
@@ -416,9 +457,9 @@ make install</code></pre>
 
 <!-- ─────────────────────────────  FAQ  ───────────────────────────── -->
 <section class="band" id="faq">
-  <h2>Straight answers</h2>
+  <h2 data-reveal>Straight answers</h2>
 
-  <div class="faq">
+  <div class="faq" data-stagger>
     <details>
       <summary>Why not just use Apple Music's own synced lyrics?</summary>
       <p>
@@ -479,13 +520,23 @@ make install</code></pre>
         natively for whichever Mac you run it on. macOS 13 Ventura or later.
       </p>
     </details>
+    <details>
+      <summary>How do you say the name?</summary>
+      <p>
+        You don't — it's a thing you type, not a thing you say.
+        <code>.lrc</code> is the file format that pairs a lyric line with the
+        moment it's sung, and the name is that extension three times, once for
+        each job: know what's playing, find the words, put them on screen. Read
+        aloud, it's “L-R-C, three times.”
+      </p>
+    </details>
   </div>
 </section>
 
 <!-- ─────────────────────────────  CLOSER  ───────────────────────────── -->
-<section class="closer">
+<section class="closer" data-stagger>
   <img src="assets/icon-180.png" alt="" width="72" height="72">
-  <h2>Put the words back on screen.</h2>
+  <h2>Never miss another chorus.</h2>
   <p class="closer-sub">Three lines in Terminal, and it's in your menu bar.</p>
   <div class="cta-row center">
     <a class="btn btn-primary" href="#install">Install</a>
@@ -503,6 +554,9 @@ make install</code></pre>
   <p class="fine">The song and artist in the demo are fictional placeholders.</p>
 </footer>
 
+<!-- motion.js first: it listens for the line changes demo.js starts emitting
+     the moment it runs. -->
+<script src="motion.js"></script>
 <script src="demo.js"></script>
 </body>
 </html>

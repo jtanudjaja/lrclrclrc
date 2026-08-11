@@ -1,19 +1,30 @@
 # lrclrclrc
 
-Time-synced lyrics floating above everything else, for **Apple Music and
-Spotify on macOS**.
+**Never miss the lyrics.**
+
+A macOS menu-bar app that shows time-synced lyrics for Apple Music and Spotify
+in a translucent card that floats above your other windows.
 
 [![CI](https://github.com/jtanudjaja/lrclrclrc/actions/workflows/ci.yml/badge.svg)](https://github.com/jtanudjaja/lrclrclrc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: macOS 13+](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)
 ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
 
-A native **SwiftUI / AppKit** menu-bar app with no third-party dependencies. It
-watches whatever's playing, pulls time-synced lyrics from
-[LRCLIB](https://lrclib.net) (free, no API key), and highlights each line on a
-translucent card that floats above your other windows.
+Native **SwiftUI / AppKit**, no third-party dependencies. It watches whatever's
+playing, pulls time-synced lyrics from [LRCLIB](https://lrclib.net) (free, no
+API key), and highlights each line as the song goes.
 
 Project page: <https://jtanudjaja.github.io/lrclrclrc/> (source in [`site/`](site/)).
+
+### The name
+
+`.lrc` is the file format that pairs a lyric line with the moment it's sung.
+The name is that extension three times, once for each job the app does — know
+what's playing, find the words, put them on screen. You don't pronounce it; you
+type it.
+
+Wording for the page, the share card and the first-run wizard is fixed in
+[`BRAND.md`](BRAND.md). Change it there first.
 
 ## Requirements
 
@@ -259,7 +270,7 @@ Issues and pull requests are welcome.
 - **Pull requests** — branch off `main`, keep `make build` green (CI runs it on
   macOS), and match the surrounding style: no third-party dependencies, and
   comments that explain *why* rather than restate the code.
-- **Scope** — this is a lyrics overlay for macOS. Features that need a signing
+- **Scope** — this is a menu-bar lyrics app for macOS. Features that need a signing
   identity, a server, or a new dependency are unlikely to land.
 - **Docs** — if you change the menu, Preferences, or the timing steps, update
   this README and the matching copy in `site/` (see

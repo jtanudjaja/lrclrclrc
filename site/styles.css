@@ -123,11 +123,14 @@ h1, h2, h3 { line-height: 1.15; letter-spacing: -.022em; margin: 0; }
   align-items: center;
 }
 
+/* Deliberately NOT uppercased, unlike the other eyebrow-ish chips on this page:
+   this one says "macOS", and text-transform renders that as "MACOS". The
+   lowercase m is the whole point of Apple's wordmark, and a marketing line is
+   the last place to get it wrong. Tracking alone carries the label. */
 .eyebrow {
   margin: 0 0 1.1rem;
-  font-size: .8rem;
-  letter-spacing: .1em;
-  text-transform: uppercase;
+  font-size: .82rem;
+  letter-spacing: .09em;
   color: var(--ink-faint);
   font-weight: 560;
 }
@@ -533,10 +536,372 @@ details p { color: var(--ink-dim); font-size: .94rem; margin: 0; padding: 0 1.3r
   .cta-row .btn { flex: 1 1 auto; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   MOTION
+
+   House rules for everything below:
+
+   • Nothing that moves is load-bearing. Every animated state starts from a
+     readable resting state; the animation is the way in, never the content.
+   • The hidden-until-revealed states are scoped to `html.motion`, a class set
+     by the bootstrap in <head> and confirmed by motion.js. No JS, or
+     reduce-motion, and none of these rules exist — the page is just static.
+   • Only transform, opacity and filter get animated. Anything that would land
+     in layout (height, width, top) is done through the Web Animations API on
+     one element at a time, or not at all.
+   • The vocabulary is the product's: lyric lines rise into place, the scroll
+     position is a scrubber, colour blooms the way album art does.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ───────────────  REVEAL: the page assembles as you read it  ─────────────── */
+
+/* Two ways in. `data-reveal` marks one element; `data-stagger` marks a
+   container whose direct children come in one after another, each offset by
+   the --d motion.js writes onto it. */
+html.motion [data-reveal],
+html.motion [data-stagger] > * {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity .7s cubic-bezier(.22,.8,.3,1) var(--d, 0ms),
+    transform .7s cubic-bezier(.22,.8,.3,1) var(--d, 0ms);
+}
+html.motion [data-reveal].in,
+html.motion [data-stagger] > .in { opacity: 1; transform: none; }
+
+/* The hero is the exception: it's already on screen when the page loads, so
+   there's no arrival to describe. Sliding it up would be motion for its own
+   sake — and the one piece of the page a reader can't scroll away from. It
+   settles in place with opacity alone, a little slower, and nothing shifts. */
+html.motion .hero-copy > *,
+html.motion .hero-demo[data-reveal] {
+  transform: none;
+  transition: opacity .85s ease var(--d, 0ms);
+}
+
+/* A slow sheen across the gradient words. The wide background-size is what
+   leaves somewhere for the light to travel. */
+.grad { background-size: 230% 100%; background-position: 0% 0; }
+html.motion .grad { animation: sheen 9s ease-in-out 1.2s infinite alternate; }
+@keyframes sheen { to { background-position: 100% 0; } }
+
+/* ───────────────  NAV: scrubber + condensing on scroll  ─────────────── */
+
+/* --scroll is written by motion.js: 0 at the top of the page, 1 at the end. */
+.scrub {
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  transform: scaleX(var(--scroll, 0));
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--brand), var(--brand-lit));
+  box-shadow: 0 0 12px rgba(127,178,245,.65);
+  opacity: .9;
+  pointer-events: none;
+}
+/* The playhead: a dot that rides the leading edge of the fill. Drawn on the
+   bar itself and un-scaled, so it stays round however far the bar has grown. */
+.scrub::after {
+  content: "";
+  position: absolute; right: 0; top: 50%;
+  width: 5px; height: 5px; margin: -2.5px -2.5px 0 0;
+  border-radius: 50%;
+  background: #dbe8fb;
+  box-shadow: 0 0 10px 1px rgba(127,178,245,.9);
+  transform: scaleX(calc(1 / max(var(--scroll, 1), .02)));
+}
+html:not(.motion) .scrub { display: none; }
+
+html.motion .nav { transition: padding .3s ease, backdrop-filter .3s ease; }
+html.motion .nav::after { transition: background-color .3s ease, box-shadow .3s ease; }
+html.motion.scrolled .nav { padding-block: .6rem; }
+html.motion.scrolled .nav::after {
+  background: rgba(8,9,12,.88);
+  box-shadow: 0 10px 30px -18px rgba(0,0,0,.9);
+}
+/* Settles rather than springs: the old curve overshot (1.5), which bounced the
+   mark every time you crossed the scroll threshold. */
+html.motion .brand img { transition: transform .4s cubic-bezier(.22,.8,.3,1); }
+html.motion.scrolled .brand img { transform: scale(.92); }
+/* The nav link for wherever you are lights up — the scrubber's idea one level
+   up. Not applied to the GitHub button: it isn't a place on this page. */
+.nav-links a:not(.nav-cta) { position: relative; transition: color .25s ease; }
+.nav-links a:not(.nav-cta)::after {
+  content: "";
+  position: absolute; left: 50%; bottom: -.45rem;
+  width: 4px; height: 4px; margin-left: -2px;
+  border-radius: 50%;
+  background: var(--brand-lit);
+  opacity: 0;
+  transform: scale(.4);
+  transition: opacity .3s ease, transform .3s cubic-bezier(.3,1.5,.5,1);
+}
+html.motion .nav-links a.is-active { color: var(--ink); }
+html.motion .nav-links a.is-active::after { opacity: 1; transform: none; }
+
+/* The mark used to pulse once per lyric line, keeping time with the demo. It
+   was the wrong element to animate: the nav is sticky, so unlike every other
+   moving thing on this page the logo is never off screen, and a scale+rotate
+   every couple of seconds is impossible to stop noticing. The demo's own
+   equaliser still carries the beat — inside the demo, where performing is the
+   point. */
+
+/* ───────────────  AURORA: colour drifting behind the hero  ─────────────── */
+
+.aurora {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 900px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.aurora .blob {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0;
+  transition: opacity 1.6s ease;
+}
+html.motion .aurora .blob { opacity: var(--o, .2); }
+.b1 { --o: .22; width: 46vw; height: 46vw; background: #2f6fd0; top: -14vw; left: -8vw; }
+.b2 { --o: .15; width: 38vw; height: 38vw; background: #7b4fd0; top: 6vw;  right: -10vw; }
+.b3 { --o: .10; width: 30vw; height: 30vw; background: #d06f8f; top: 30vw; left: 34vw; }
+
+/* Long, prime-ish periods so the three never resynchronise into a visible
+   pulse. Paused by .aurora:not(.live) once the hero is off screen. */
+html.motion .b1 { animation: drift-a 31s ease-in-out infinite alternate; }
+html.motion .b2 { animation: drift-b 24s ease-in-out infinite alternate; }
+html.motion .b3 { animation: drift-c 37s ease-in-out infinite alternate; }
+.aurora:not(.live) .blob { animation-play-state: paused; }
+
+@keyframes drift-a { to { transform: translate3d(9vw, 5vw, 0)  scale(1.16); } }
+@keyframes drift-b { to { transform: translate3d(-7vw, 7vw, 0) scale(.86); } }
+@keyframes drift-c { to { transform: translate3d(6vw, -4vw, 0) scale(1.22); } }
+
+/* ───────────────  HERO DEMO: float, tilt, breathing glows  ─────────────── */
+
+/* No idle float here either — see the hero note above. The demo only moves in
+   answer to the pointer, and the depth comes from the tilt, not from drift.
+   The `hover-float` keyframe that used to live here went with the closer icon
+   it was written for; nothing drifts on its own on this page any more. */
+
+.desktop {
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .5s cubic-bezier(.22,.8,.3,1);
+}
+/* While the pointer is actually over it, drop the easing to near-nothing so
+   the card tracks the cursor instead of trailing it. */
+.desktop.tracking, .desktop.tracking .card { transition-duration: .12s; transition-timing-function: linear; }
+
+/* Real parallax without 3D: `overflow: hidden` on .desktop flattens any
+   preserve-3d, so the card's depth comes from sliding it a few px against the
+   tilt. motion.js writes --tx/--ty in px next to the rotations. */
+.card {
+  transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0);
+  transition: transform .5s cubic-bezier(.22,.8,.3,1);
+}
+
+html.motion .desktop-glow { animation: bloom 15s ease-in-out infinite alternate; will-change: transform; }
+html.motion .g2 { animation-duration: 21s; animation-direction: alternate-reverse; }
+html.motion .g3 { animation-duration: 27s; }
+.hero-demo:not(.live) .desktop-glow { animation-play-state: paused; }
+@keyframes bloom {
+  to { transform: translate3d(6%, -5%, 0) scale(1.25); }
+}
+
+/* Album art picks up a hue per line, and the card takes a matching bloom —
+   both driven by --hue, a unitless number demo.js rotates as the song plays.
+   Unitless because CSS can multiply a number by 1deg but cannot divide a deg
+   by a deg, and the bloom needs it as a bare hue angle. */
+.art {
+  filter: hue-rotate(calc(var(--hue, 0) * 1deg)) saturate(1.05);
+  transition: filter 1.4s ease;
+}
+.card::before {
+  content: "";
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%,
+              hsl(calc(215 + var(--hue, 0)) 70% 62% / .16), transparent 66%);
+  transition: background 1.4s ease;
+}
+html:not(.motion) .card::before { display: none; }
+
+/* Menu-bar equaliser. Four bars, four periods, one shared keyframe. */
+.eq { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 9px; }
+.eq i {
+  width: 2px;
+  height: 30%;
+  border-radius: 1px;
+  background: rgba(255,255,255,.85);
+  transform-origin: 50% 100%;
+}
+html.motion .eq i { animation: eq 1.1s ease-in-out infinite alternate; }
+html.motion .eq i:nth-child(1) { animation-duration: .74s; }
+html.motion .eq i:nth-child(2) { animation-duration: 1.06s; }
+html.motion .eq i:nth-child(3) { animation-duration: .58s; }
+html.motion .eq i:nth-child(4) { animation-duration: .9s;  }
+.hero-demo:not(.live) .eq i { animation-play-state: paused; }
+@keyframes eq { to { height: 100%; } }
+
+/* On every line change the bars jump, the way a level meter does on a hit. */
+.eq.hit i { animation-duration: .3s !important; }
+
+/* ───────────────  LYRIC LINES: the karaoke sweep  ─────────────── */
+
+/* The fill is a two-stop gradient clipped to the glyphs and slid across them
+   over exactly as long as the line is held — the same left-to-right read the
+   app's highlight implies, made literal. Non-current lines park at the dim
+   end of the same gradient, so there's one mechanism, not two. */
+.line { --lit: #fff; --dim: rgba(255,255,255,.30); }
+.line.is-near    { --dim: rgba(255,255,255,.50); }
+.line.is-current { --dim: rgba(255,255,255,.46); }
+
+.line .ln {
+  background-image: linear-gradient(90deg,
+    var(--lit) 44%, var(--dim) 56%);
+  background-size: 220% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  transition: background-position .35s ease;
+}
+.line.is-current .ln {
+  background-position: 0 0;
+  transition: background-position var(--sweep, 2.4s) linear;
+}
+/* Without JS the gradient never moves, so lines would sit dim forever. */
+html:not(.motion) .line .ln { background: none; color: inherit; }
+
+/* ───────────────  CARDS: cursor spotlight  ─────────────── */
+
+/* --mx/--my are the pointer's position inside the card, written by motion.js.
+   Before the first move they default to the top-left-ish, which never shows:
+   the glow's opacity is tied to :hover. */
+.feat, .steps li, .install-card, .note, details {
+  position: relative;
+  isolation: isolate;
+}
+.feat::before, .steps li::before, .install-card::before, .note::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 0%),
+              rgba(127,178,245,.13), transparent 70%);
+  opacity: 0;
+  transition: opacity .35s ease;
+}
+html.motion .feat:hover::before,
+html.motion .steps li:hover::before,
+html.motion .install-card:hover::before,
+html.motion .note:hover::before { opacity: 1; }
+
+/* The step numbers get a rule that draws itself once the card arrives. */
+.step-n { position: relative; }
+.step-n::after {
+  content: "";
+  position: absolute; left: 0; bottom: -.45rem;
+  height: 1px; width: 34px;
+  background: linear-gradient(90deg, var(--brand-lit), transparent);
+  transform: scaleX(0); transform-origin: 0 50%;
+}
+html.motion .steps li.in .step-n::after {
+  transform: scaleX(1);
+  transition: transform .8s cubic-bezier(.19,1,.22,1) .25s;
+}
+
+/* ───────────────  HEADINGS: a line that draws under them  ─────────────── */
+
+/* Left as a block: `.band.alt` centres its direct children with an auto inline
+   margin, which an inline-block would ignore and slam to the viewport edge. So
+   the rule is a fixed accent length rather than the width of the words. */
+.band h2 { position: relative; }
+.band h2::after {
+  content: "";
+  position: absolute; left: 0; bottom: -.3rem;
+  width: 46px; height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--brand-lit), rgba(51,112,209,0));
+  transform: scaleX(0); transform-origin: 0 50%;
+}
+html.motion .band h2.in::after,
+html.motion .split-copy.in h2::after {
+  transform: scaleX(1);
+  transition: transform 1s cubic-bezier(.19,1,.22,1) .15s;
+}
+
+/* ───────────────  BUTTONS: sheen and magnetism  ─────────────── */
+
+/* --bx/--by are a couple of pixels of lean toward the cursor, set by motion.js.
+   Deliberately understated: a call to action that visibly performs reads as a
+   trick, and this one is asking someone to paste a command into a terminal.
+   The lean is meant to be felt rather than watched. */
+.btn { position: relative; }
+html.motion .btn {
+  transform: translate3d(var(--bx, 0px), var(--by, 0px), 0);
+  transition: transform .4s cubic-bezier(.22,.8,.3,1),
+              box-shadow .18s ease, background-color .18s ease, border-color .18s ease;
+}
+html.motion .btn:hover { transform: translate3d(var(--bx, 0px), calc(var(--by, 0px) - 1px), 0); }
+
+/* ───────────────  MENU MOCK: a hand walking the menu  ─────────────── */
+
+/* .is-hot is what a real highlight looks like; motion.js moves it down the
+   list, then ticks Click-Through on and off again. */
+.mm-row { transition: background-color .18s ease, color .18s ease; }
+.mm-row.is-hot { background: var(--brand); color: #fff; }
+.mm-row.is-hot .mm-key { color: rgba(255,255,255,.8); }
+.mm-row.is-hot .mm-check { color: #fff; }
+.mm-check {
+  transform-origin: 50% 60%;
+  transition: opacity .2s ease, transform .3s cubic-bezier(.3,1.5,.5,1);
+}
+.mm-check:empty { opacity: 0; }
+.mm-check.pop { transform: scale(1.5); }
+
+/* ───────────────  TERMINAL: the commands type themselves  ─────────────── */
+
+pre[data-type] code::after {
+  content: "";
+  display: none;
+  width: 7px; height: 1.05em;
+  margin-left: 2px;
+  background: var(--brand-lit);
+  vertical-align: text-bottom;
+}
+pre[data-type].typing code::after { display: inline-block; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+/* ───────────────  FAQ  ─────────────── */
+
+details { transition: border-color .25s ease, background-color .25s ease; }
+html.motion details[open] { background: rgba(127,178,245,.045); }
+summary::after { transition: transform .3s cubic-bezier(.3,1.4,.5,1), color .2s ease; }
+html.motion summary:hover::after { color: var(--brand-lit); }
+
+/* ───────────────  CLOSER  ─────────────── */
+
+/* The closer's app icon used to bob up and down forever. Removed for the same
+   reason as the nav mark: it's the logo, it sits directly above the final CTA,
+   and perpetual motion next to a button reads as a distraction from it. */
+
+/* ───────────────  RESPECTING THE ASK  ─────────────── */
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
     animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: .001ms !important;
   }
+  /* Belt to the bootstrap's braces: even if `html.motion` somehow survives,
+     nothing here is left mid-animation and invisible. */
+  [data-reveal], [data-stagger] > * { opacity: 1 !important; transform: none !important; }
+  .line .ln { background: none; color: inherit; }
 }

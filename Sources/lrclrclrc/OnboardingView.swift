@@ -41,7 +41,10 @@ struct OnboardingView: View {
                 .font(.system(size: 42, weight: .semibold))
                 .foregroundStyle(.tint)
             Text("Welcome to lrclrclrc").font(.title2).bold()
-            Text("A floating lyrics overlay for Apple Music and Spotify. It lives in your menu bar — look for the ♫ icon at the top; every option is there.")
+            // Outcome first, mechanism second — see BRAND.md, "Name the problem,
+            // not the mechanism". What this screen has to land is that the words
+            // simply turn up; that it does it from the menu bar is the follow-up.
+            Text("Play something in Apple Music or Spotify and the words turn up, in time, without leaving what you're doing. Everything is behind the ♫ at the top of your screen.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
@@ -100,7 +103,9 @@ struct OnboardingView: View {
                 .font(.system(size: 42))
                 .foregroundStyle(.green)
             Text("You're all set").font(.title2).bold()
-            Text("Play a song and the lyrics will appear. Everything lives in the menu-bar ♫ menu.")
+            // Echoes the tagline deliberately — this is the last thing the app
+            // says before it gets out of the way.
+            Text("Play a song and you won't miss a line. Everything lives in the menu-bar ♫ menu.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }

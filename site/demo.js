@@ -8,6 +8,7 @@
 (function () {
   const stack = document.getElementById('lines');
   const mbLine = document.getElementById('mbLine');
+  const card = document.getElementById('card');
   if (!stack) return;
 
   // [seconds held, text]
@@ -25,10 +26,17 @@
   ];
 
   // Build the stack once; only the transform and classes change after this.
+  // The inner span is what the karaoke sweep paints: a gradient clipped to the
+  // glyphs, slid across them over the life of the line. It needs its own box —
+  // the .line is a flex row as wide as the card, and a gradient sized to that
+  // would sweep the padding as well as the words.
   const els = SONG.map(([, text]) => {
     const el = document.createElement('div');
     el.className = 'line';
-    el.textContent = text;
+    const inner = document.createElement('span');
+    inner.className = 'ln';
+    inner.textContent = text;
+    el.appendChild(inner);
     stack.appendChild(el);
     return el;
   });
@@ -42,6 +50,9 @@
 
   function render() {
     els.forEach((el, n) => {
+      // The sweep has to finish a little early: a fill that completes exactly
+      // as the line changes never looks finished, it looks cut off.
+      if (n === i) el.style.setProperty('--sweep', (SONG[i][0] * 0.88).toFixed(2) + 's');
       el.classList.toggle('is-current', n === i);
       el.classList.toggle('is-near', Math.abs(n - i) === 1);
     });
@@ -49,6 +60,19 @@
     // by i whole lines plus half of one.
     const h = lineHeight();
     stack.style.transform = `translateY(${-(i * h + h / 2)}px)`;
+
+    // Album art drifts through a hue per line, and the card takes a matching
+    // bloom off it — the way a real overlay picks up colour from the artwork.
+    // Unitless: the CSS multiplies it by 1deg in one place and reads it as a
+    // bare hue angle in the other.
+    // Kept inside ±60°: a full rotation sends the artwork through greens and
+    // yellows that read as a bug rather than as a different album.
+    if (card) card.style.setProperty('--hue', ((i * 47) % 120) - 60);
+
+    document.dispatchEvent(new CustomEvent('lrc:line', {
+      detail: { index: i, text: SONG[i][1], hold: SONG[i][0] }
+    }));
+
     if (mbLine) mbLine.textContent = '♫  ' + SONG[i][1];
   }
 
