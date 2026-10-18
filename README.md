@@ -3,7 +3,8 @@
 **Never miss the lyrics.**
 
 A macOS menu-bar app that shows time-synced lyrics for Apple Music and Spotify
-in a translucent card that floats above your other windows.
+in a translucent card that floats above your other windows — or in the MacBook
+notch.
 
 [![CI](https://github.com/jtanudjaja/lrclrclrc/actions/workflows/ci.yml/badge.svg)](https://github.com/jtanudjaja/lrclrclrc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -82,10 +83,31 @@ where lyrics show, pick a player, and quit.
   keeps them visible.
 - With nothing playing for ~30s the card fades back to near-invisible.
 
+### The notch (MacBook)
+
+**Show Lyrics In → Notch** puts the current line in the black bar at the top of
+the screen, in a slab that reaches up into the camera housing so it reads as the
+notch itself getting deeper rather than as a window parked underneath.
+
+- **Collapsed is the resting state** — with nothing playing the slab is exactly
+  the housing's size and disappears into it. The notch is just a notch again.
+- **One line while a song plays**, the slab only as wide as the words need. A
+  line too long for the room **scrolls** to show its tail rather than shrinking
+  or ending in an ellipsis.
+- **Hover the notch** and the slab opens into a small stage: the line playing,
+  with the line before and after it.
+- It **never takes a click**. The slab covers the middle of the menu bar, so it
+  stays mouse-transparent — the bar, the status items and whatever is under it
+  are exactly as reachable as before, and any menu you pull down draws over the
+  slab.
+- **Without a notch** (an external display, an older Mac) the slab hangs from
+  the middle of the menu bar instead.
+
 ### Menu-bar menu (♫)
 
-- **Show Lyrics In** — **Overlay** (the floating card), **Menu Bar** (the
-  current line in the menu bar, ♫ hidden for room), or **Hidden**.
+- **Show Lyrics In** — **Overlay** (the floating card), **Notch** (the current
+  line in the MacBook notch), **Menu Bar** (the current line in the menu bar, ♫
+  hidden for room), or **Hidden**.
 - **Follow** — **Automatic** (whichever enabled player is playing), or pin a
   specific one. The list only offers players enabled in Preferences.
 - **Full Lyrics…** (⌘F) — the whole song, scrollable, current line highlighted;
@@ -111,7 +133,7 @@ One window, resizable, remembering its own frame:
 - **Music Apps** — enable/disable Apple Music and Spotify. Apps installed on
   this Mac are enabled automatically; turn on one that wasn't found and the app
   asks you to point at it.
-- **Lyrics** — overlay / menu bar / hidden.
+- **Lyrics** — overlay / notch / menu bar / hidden.
 - **Appearance** — text size, background opacity when not hovered, text color
   (light presets for dark wallpaper and art, dark presets for a bright desktop,
   plus a custom picker), always-show-controls.
@@ -179,7 +201,8 @@ advance; a plain-text result has no timestamps. The source chip in the card
 header shows what was found.
 
 **The card is in the way.** Turn on **Click-Through** (⌘T) so clicks pass
-through it, or set **Show Lyrics In → Menu Bar / Hidden**.
+through it, or set **Show Lyrics In → Notch / Menu Bar / Hidden**. The notch
+slab never takes a click at all.
 
 ## Development
 
@@ -212,6 +235,10 @@ Sources/lrclrclrc/
   OverlayPanel.swift      Transparent floating window (+ passive profile)
   OverlayView.swift       SwiftUI glass lyric card
   OverlayMetrics.swift    Live minimum-size / layout math
+  NotchPanel.swift        Click-through stage window pinned over the notch
+  NotchView.swift         SwiftUI notch slab (chin, marquee, hover stage)
+  NotchGeometry.swift     Camera-housing geometry + slab layout math
+  NotchHoverMonitor.swift Pointer watch for a window that takes no events
   Appearance.swift        Text size, opacity, color (the two-pole palette)
   LyricsController.swift  Polling, smooth line syncing, transport, offsets
   MusicWatcher.swift      AppleScript track/position/artwork reader

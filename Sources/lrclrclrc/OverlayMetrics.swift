@@ -14,16 +14,17 @@ enum OverlayMetrics {
     static let footerH: CGFloat = 32         // one row: transport leading, timing trailing
     static let lineUnit: CGFloat = 25.5      // nominal context-line slot (15pt font * 1.7)
     static let hPadding: CGFloat = 48        // 24 leading + 24 trailing
-    // The one-row footer needs ~195pt — transport 86 (3 × 22pt hit targets +
-    // 2 × 10 gaps), timing 96 (2 × 22 + 2 × 6 + the 40pt readout floor), and
-    // the spacer's 12pt minimum between them. 250 − 48 padding = 202
-    // available, so a too-narrow footer is impossible by construction (no
-    // squeezed variant) in the tiers that have one.
+    // The one-row footer needs ~226pt — transport 86 (3 × 22pt hit targets +
+    // 2 × 10 gaps), timing 96 (2 × 22 + 2 × 6 + the 40pt readout floor), the
+    // options button's 22 + its 10pt gap, and the spacer's 12pt minimum
+    // between the two ends. 280 − 48 padding = 232 available, so a too-narrow
+    // footer is impossible by construction (no squeezed variant) in the tiers
+    // that have one.
     //
     // Below ~220 the active row starts wrapping an extra time for ordinary
     // lyrics, and the height the floor then demands outruns the width saved —
-    // the card gets *larger* in area. 250 sits clear of both limits.
-    static let minWidthBase: CGFloat = 250
+    // the card gets *larger* in area. 280 sits clear of both limits.
+    static let minWidthBase: CGFloat = 280
 
     /// Blur radius for the hero line's bloom, sized against the side inset so
     /// the pool stays inside the card's rounded clip at any window width. A

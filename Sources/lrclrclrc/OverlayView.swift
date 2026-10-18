@@ -31,6 +31,10 @@ private final class TextHeightCache {
 struct OverlayView: View {
     @ObservedObject var controller: LyricsController
     @ObservedObject var appearance: Appearance
+    /// Opens the app's options menu — the same one the menu-bar icon shows.
+    /// The card raises it from the footer's ⋯ button; AppKit raises it from a
+    /// right-click anywhere on the card (`NSView.menu`, wired in AppDelegate).
+    let showOptions: () -> Void
 
     @State private var hovered = false
     // Scrub gesture state (spec Part 7).
@@ -682,30 +686,30 @@ struct OverlayView: View {
 
     // MARK: - Footer (one constant row: transport leading, timing trailing)
 
-    /// Transport at the leading edge, timing at the trailing one, pushed apart
-    /// by a spacer — the two ends of a player's control bar, matching the
-    /// header's own leading/trailing split so the card has one alignment story
-    /// rather than a centered row between two justified ones.
+    /// Transport at the leading edge, timing and options at the trailing one,
+    /// pushed apart by a spacer — the two ends of a player's control bar,
+    /// matching the header's own leading/trailing split so the card has one
+    /// alignment story rather than a centered row between two justified ones.
     ///
     /// The spacer is also a stronger collision guarantee than the centered
     /// cluster it replaces. That version spaced the two groups by a fixed
     /// 26pt×fs and relied on the floor width being generous enough; this one
     /// simply absorbs whatever room is left, and the groups themselves got
-    /// tighter (~200pt×fs together, against 272pt×fs of content at the floor).
+    /// tighter (~226pt×fs together, against 232pt×fs of content at the floor).
     private func footerRow(fs: CGFloat, cardWidth: CGFloat, visible: Bool) -> some View {
         HStack(spacing: 0) {
             // Play/pause leads: it's the button being reached for, and the one
             // whose glyph also reports the state. Prev/next recede to the
             // weight of the lyrics' own context lines.
             HStack(spacing: 10 * fs) {
-                transportButton("backward.fill", fs: fs, size: 12.5, opacity: 0.6) {
+                footerButton("backward.fill", fs: fs, size: 12.5, opacity: 0.6) {
                     controller.previousTrack()
                 }
-                transportButton(controller.isPlaying ? "pause.fill" : "play.fill",
-                                fs: fs, size: 15.5, opacity: 1) {
+                footerButton(controller.isPlaying ? "pause.fill" : "play.fill",
+                             fs: fs, size: 15.5, opacity: 1) {
                     controller.playPause()
                 }
-                transportButton("forward.fill", fs: fs, size: 12.5, opacity: 0.6) {
+                footerButton("forward.fill", fs: fs, size: 12.5, opacity: 0.6) {
                     controller.nextTrack()
                 }
             }
@@ -715,6 +719,15 @@ struct OverlayView: View {
             timingCluster(fs)
                 .opacity(controller.isSynced ? 1 : 0)
                 .allowsHitTesting(controller.isSynced && visible)
+            // Everything the menu-bar icon offers, raised from the card itself.
+            // It sits last because it's the row's escape hatch rather than one
+            // of its controls — and because the settings behind it (where the
+            // lyrics show, which player to follow) are otherwise only reachable
+            // from a menu bar the user isn't looking at.
+            footerButton("ellipsis", fs: fs, size: 13, opacity: 0.6, action: showOptions)
+                .padding(.leading, 10 * fs)
+                .help("Options")
+                .accessibilityLabel("Options")
         }
         .frame(maxWidth: .infinity)
         .opacity(visible ? 1 : 0)
@@ -728,20 +741,20 @@ struct OverlayView: View {
     /// width-floored so crossing into two digits doesn't shove the buttons.
     private func timingCluster(_ fs: CGFloat) -> some View {
         HStack(spacing: 6 * fs) {
-            transportButton("minus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(-0.1) }
+            footerButton("minus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(-0.1) }
             Text(String(format: "%+.1fs", controller.offset))
                 .font(.system(size: 10 * fs, weight: .medium, design: .monospaced))
                 .foregroundStyle(textColor.opacity(0.55))
                 .frame(minWidth: 40 * fs)
-            transportButton("plus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(0.1) }
+            footerButton("plus", fs: fs, size: 11, opacity: 0.6) { controller.nudgeOffset(0.1) }
         }
     }
 
     /// The hit target stays a constant 22×20pt×fs whatever the glyph inside it
     /// weighs — emphasis is the picture's job, not the button's.
-    private func transportButton(_ symbol: String, fs: CGFloat, size: CGFloat = 14,
-                                 opacity: Double = 0.92,
-                                 action: @escaping () -> Void) -> some View {
+    private func footerButton(_ symbol: String, fs: CGFloat, size: CGFloat = 14,
+                              opacity: Double = 0.92,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * fs, weight: .semibold))

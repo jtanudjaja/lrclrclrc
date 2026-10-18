@@ -71,6 +71,7 @@ struct PreferencesView: View {
             Section("Lyrics") {
                 Picker("Show in", selection: $display) {
                     Text("Overlay").tag(DisplayMode.overlay)
+                    Text("Notch").tag(DisplayMode.notch)
                     Text("Menu Bar").tag(DisplayMode.menuBar)
                     Text("Hidden").tag(DisplayMode.hidden)
                 }

@@ -3,10 +3,11 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
-/// Where lyrics are shown. The overlay and the menu bar are mutually exclusive,
-/// so this is one setting rather than two toggles.
+/// Where lyrics are shown. The surfaces are mutually exclusive, so this is one
+/// setting rather than a toggle each.
 enum DisplayMode: String {
     case overlay
+    case notch
     case menuBar
     case hidden
 }
@@ -14,6 +15,12 @@ enum DisplayMode: String {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var panel: OverlayPanel?
+    private var notchPanel: NotchPanel?
+    /// Shared by the slab and its window so both read one copy of the
+    /// housing's size and centre, and both follow a display change.
+    private let notchDock = NotchDock()
+    /// Watches the pointer for the slab, which takes no mouse events itself.
+    private let notchHover = NotchHoverMonitor()
     private let controller = LyricsController()
 
     private var clickThrough = false
@@ -43,13 +50,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let hosting = NSHostingView(rootView: OverlayView(controller: controller, appearance: appearance))
+        let card = OverlayView(controller: controller, appearance: appearance,
+                               showOptions: { [weak self] in self?.showOptionsMenu() })
+        let hosting = NSHostingView(rootView: card)
         hosting.autoresizingMask = [.width, .height]
 
         // Container for the SwiftUI card.
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 150))
         hosting.frame = container.bounds
         container.addSubview(hosting)
+
+        // Right-click anywhere on the card opens the very same menu the
+        // menu-bar icon does, via AppKit's own contextual-menu path — so
+        // nothing here competes with the stage's scrub or the header's drag.
+        // Both views carry it: the hosting view is what the click lands on, and
+        // the container catches the case where SwiftUI answers the menu lookup
+        // itself and hands the event up the responder chain instead.
+        hosting.menu = optionsMenu
+        container.menu = optionsMenu
 
         let panel = OverlayPanel(contentView: container)
         self.panel = panel
@@ -203,12 +221,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = statusIcon
+        item.menu = optionsMenu
 
+        statusItem = item
+        updateLaunchAtLoginState()
+    }
+
+    /// Every option the app has, in one menu shown from two places: the
+    /// menu-bar icon and the overlay itself (its ⋯ button and its right-click).
+    /// One instance rather than one per surface — a second copy is a second set
+    /// of checkmarks to keep honest.
+    private lazy var optionsMenu: NSMenu = buildOptionsMenu()
+
+    private func buildOptionsMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
 
-        // Where lyrics show (radio): Overlay / Menu Bar / Hidden.
+        // Where lyrics show (radio): Overlay / Notch / Menu Bar / Hidden.
         let displaySubmenu = NSMenu()
         displaySubmenu.addItem(modeItem("Overlay", .overlay))
+        displaySubmenu.addItem(modeItem("Notch", .notch))
         displaySubmenu.addItem(modeItem("Menu Bar", .menuBar))
         displaySubmenu.addItem(modeItem("Hidden", .hidden))
         menu.addItem(submenu("Show Lyrics In", displaySubmenu))
@@ -245,10 +277,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(makeItem("Quit lrclrclrc", #selector(quit), "q"))
-        item.menu = menu
 
-        statusItem = item
-        updateLaunchAtLoginState()
+        return menu
+    }
+
+    /// Pop the options menu over the card, at the pointer. The overlay is
+    /// where the user is already looking, so it can't be the one surface that
+    /// has to send them to the menu bar to change anything — including moving
+    /// the lyrics *to* the menu bar.
+    private func showOptionsMenu() {
+        guard let contentView = panel?.contentView, let window = contentView.window else { return }
+        let point = contentView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        optionsMenu.popUp(positioning: nil, at: point, in: contentView)
     }
 
     private func makeItem(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
@@ -319,12 +359,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch mode {
         case .overlay:
             stopMenuBarLyrics()
+            hideNotch()
             panel?.orderFrontRegardless()
+        case .notch:
+            stopMenuBarLyrics()
+            panel?.orderOut(nil)
+            showNotch()
         case .menuBar:
+            hideNotch()
             panel?.orderOut(nil)
             startMenuBarLyrics()
         case .hidden:
             stopMenuBarLyrics()
+            hideNotch()
             panel?.orderOut(nil)
         }
         updateActivationPolicy()
@@ -463,6 +510,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         present(window)
     }
 
+    // MARK: - Notch
+
+    /// Built the first time the mode is picked: a user who never puts lyrics
+    /// in the notch never pays for the window.
+    private func showNotch() {
+        if notchPanel == nil {
+            let slab = NotchView(dock: notchDock, hover: notchHover,
+                                 controller: controller, appearance: appearance)
+            notchPanel = NotchPanel(contentView: NSHostingView(rootView: slab), dock: notchDock)
+        }
+        notchPanel?.orderFrontRegardless()
+        notchHover.setEnabled(true)
+    }
+
+    private func hideNotch() {
+        notchPanel?.orderOut(nil)
+        notchHover.setEnabled(false)
+    }
+
     // MARK: - Menu-bar lyrics
 
     private func startMenuBarLyrics() {
@@ -502,6 +568,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+// MARK: - Menu state
+
+extension AppDelegate: NSMenuDelegate {
+    /// The two readouts nothing in the app notifies us about: the offset can be
+    /// nudged from the card's own footer, and the login item can be switched off
+    /// in System Settings. Both are cheap to re-read as the menu opens.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        updateOffsetTitle()
+        updateLaunchAtLoginState()
     }
 }
 
